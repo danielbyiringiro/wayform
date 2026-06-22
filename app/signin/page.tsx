@@ -18,7 +18,7 @@ export default function SignIn() {
 
   useEffect(() => {
     if (session) {
-      router.push("/");
+      router.replace("/loop");
     }
   }, [session, router]);
 
@@ -29,17 +29,16 @@ export default function SignIn() {
     setMessage(null);
 
     if (isSignUp) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+      const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) {
         setError(error.message);
       } else if (data.session) {
         // Email confirmation disabled: user is signed in immediately.
-        router.push("/");
+        router.replace("/loop");
       } else {
-        setMessage("Check your email for the confirmation link to finish signing up.");
+        setMessage(
+          "Check your email for the confirmation link to finish signing up.",
+        );
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
@@ -48,29 +47,45 @@ export default function SignIn() {
       });
       if (error) {
         setError(error.message);
+      } else {
+        router.replace("/loop");
       }
     }
     setLoading(false);
   };
 
-  return (
-    <div className="flex min-h-[calc(100vh-200px)] flex-1 flex-col justify-center px-6 py-12 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 className="mt-10 text-center text-2xl/9 font-bold tracking-tight text-foreground">
-          {isSignUp ? "Create an account" : "Sign in to your account"}
-        </h2>
-      </div>
+  const inputClasses =
+    "block w-full rounded-lg border border-stone-200 bg-white/70 px-3.5 py-2.5 text-base text-stone-800 placeholder:text-stone-400 outline-none transition focus:border-green-600 focus:ring-2 focus:ring-green-600/20 sm:text-sm";
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-        <form className="space-y-6" onSubmit={handleAuth}>
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm/6 font-medium text-foreground"
-            >
-              Email address
-            </label>
-            <div className="mt-2">
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50 px-6 py-16">
+      <div className="w-full max-w-sm">
+        {/* Wordmark + invitation */}
+        <div className="text-center">
+          <p className="font-serif text-3xl font-semibold text-green-700">
+            WayForm
+          </p>
+          <p className="mt-2 text-sm text-stone-500">
+            {isSignUp
+              ? "Begin your formation journey."
+              : "Welcome back. Continue your journey."}
+          </p>
+        </div>
+
+        {/* Card */}
+        <div className="mt-8 rounded-2xl border border-stone-200/70 bg-white/70 p-7 shadow-sm backdrop-blur">
+          <h1 className="text-center font-serif text-xl text-stone-800">
+            {isSignUp ? "Create your account" : "Sign in"}
+          </h1>
+
+          <form className="mt-6 space-y-5" onSubmit={handleAuth}>
+            <div>
+              <label
+                htmlFor="email"
+                className="mb-1.5 block text-sm font-medium text-stone-600"
+              >
+                Email
+              </label>
               <input
                 id="email"
                 name="email"
@@ -79,67 +94,64 @@ export default function SignIn() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="block w-full rounded-md bg-background px-3 py-1.5 text-base text-foreground outline outline-1 -outline-offset-1 outline-border placeholder:text-muted-foreground focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-green-600 sm:text-sm/6"
+                className={inputClasses}
               />
             </div>
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between">
+            <div>
               <label
                 htmlFor="password"
-                className="block text-sm/6 font-medium text-foreground"
+                className="mb-1.5 block text-sm font-medium text-stone-600"
               >
                 Password
               </label>
-            </div>
-            <div className="mt-2">
               <input
                 id="password"
                 name="password"
                 type="password"
                 required
-                autoComplete="current-password"
+                autoComplete={isSignUp ? "new-password" : "current-password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full rounded-md bg-background px-3 py-1.5 text-base text-foreground outline outline-1 -outline-offset-1 outline-border placeholder:text-muted-foreground focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-green-600 sm:text-sm/6"
+                className={inputClasses}
               />
             </div>
-          </div>
 
-          {error && (
-            <div className="text-sm text-destructive text-center">{error}</div>
-          )}
+            {error && (
+              <p className="text-center text-sm text-red-600">{error}</p>
+            )}
+            {message && (
+              <p className="text-center text-sm text-green-700">{message}</p>
+            )}
 
-          {message && (
-            <div className="text-sm text-green-600 text-center">{message}</div>
-          )}
-
-          <div>
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full justify-center rounded-md bg-green-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-sm hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:opacity-50"
+              className="flex w-full justify-center rounded-lg bg-green-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:opacity-50"
             >
-              {loading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
+              {loading
+                ? "Please wait…"
+                : isSignUp
+                  ? "Create account"
+                  : "Sign in"}
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
 
-        <p className="mt-10 text-center text-sm/6 text-muted-foreground">
-          {isSignUp ? "Already have an account? " : "Not a member? "}
+        <p className="mt-6 text-center text-sm text-stone-500">
+          {isSignUp ? "Already have an account? " : "New to WayForm? "}
           <button
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError(null);
               setMessage(null);
             }}
-            className="font-semibold text-green-600 hover:text-green-700"
+            className="font-semibold text-green-700 underline-offset-4 hover:underline"
           >
-            {isSignUp ? "Sign In" : "Sign Up"}
+            {isSignUp ? "Sign in" : "Create one"}
           </button>
         </p>
       </div>
-    </div>
+    </main>
   );
 }

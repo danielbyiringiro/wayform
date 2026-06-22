@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Lock, BookOpen, Sparkles, Hand } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { supabase } from "@/utils/supabase";
-import { getOrCreateProgress, advanceDay } from "@/utils/progress";
+import { getOrCreateProgress, advanceDay, isNextDayUnlocked } from "@/utils/progress";
 import { getDailyLoop, TRACK_TITLE, TRACK_LENGTH } from "@/constants/track";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 
 type Status = "loading" | "ready" | "error";
 
@@ -18,8 +17,15 @@ export default function DailyLoopPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [currentDay, setCurrentDay] = useState(1); // furthest unlocked day
+  const [currentDayStartedAt, setCurrentDayStartedAt] = useState<string>(
+    new Date().toISOString(),
+  );
   const [viewDay, setViewDay] = useState(1); // day currently being viewed
   const [advancing, setAdvancing] = useState(false);
+  // ESV passage text fetched per day (matches the ESV audio). Falls back to
+  // the embedded KJV text if the ESV key is not configured.
+  const [esvText, setEsvText] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -39,6 +45,7 @@ export default function DailyLoopPage() {
         if (!active) return;
         setUserId(session.user.id);
         setCurrentDay(progress.current_day);
+        setCurrentDayStartedAt(progress.current_day_started_at);
         setViewDay(progress.current_day);
         setStatus("ready");
       } catch {
@@ -64,12 +71,35 @@ export default function DailyLoopPage() {
     };
   }, [router]);
 
+  // Fetch the ESV text for the day being viewed (matches the ESV audio).
+  useEffect(() => {
+    if (status !== "ready") return;
+    const loop = getDailyLoop(viewDay);
+    if (!loop) return;
+
+    let active = true;
+    setEsvText(null);
+    fetch(`/api/passage?q=${encodeURIComponent(loop.scripture.reference)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.text) setEsvText(data.text as string);
+      })
+      .catch(() => {
+        /* fall back to embedded KJV text */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [viewDay, status]);
+
   const handleAdvance = async () => {
     if (!userId) return;
     setAdvancing(true);
     try {
       const progress = await advanceDay(userId, currentDay);
       setCurrentDay(progress.current_day);
+      setCurrentDayStartedAt(progress.current_day_started_at);
       setViewDay(progress.current_day);
     } catch {
       setErrorMsg("Could not save your progress. Please try again.");
@@ -80,16 +110,18 @@ export default function DailyLoopPage() {
 
   if (status === "loading") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gradient-to-r from-rose-100 to-teal-100">
-        <p className="text-slate-600">Loading your daily loop…</p>
+      <main className="flex min-h-screen items-center justify-center bg-stone-50">
+        <p className="font-serif text-stone-500">Preparing today’s loop…</p>
       </main>
     );
   }
 
   if (status === "error") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gradient-to-r from-rose-100 to-teal-100 px-6">
-        <p className="max-w-md text-center text-slate-700">{errorMsg}</p>
+      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
+        <p className="max-w-md text-center leading-relaxed text-stone-600">
+          {errorMsg}
+        </p>
       </main>
     );
   }
@@ -98,144 +130,165 @@ export default function DailyLoopPage() {
   if (!loop) return null;
 
   const isOnCurrent = viewDay === currentDay;
-  const canAdvance = isOnCurrent && currentDay < TRACK_LENGTH;
+  const hasNextDay = currentDay < TRACK_LENGTH;
+  const nextDayUnlocked = isNextDayUnlocked(currentDayStartedAt);
+  const canAdvance = isOnCurrent && hasNextDay && nextDayUnlocked;
+  const awaitingNextDay = isOnCurrent && hasNextDay && !nextDayUnlocked;
   const finishedTrack = currentDay >= TRACK_LENGTH && isOnCurrent;
 
   return (
-    <main className="min-h-screen bg-gradient-to-r from-rose-100 to-teal-100">
-      <div className="mx-auto max-w-2xl px-6 pb-20 pt-24">
-        {/* Track + day header */}
-        <div className="text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-green-600">
+    <main className="min-h-screen bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50">
+      <div className="mx-auto max-w-xl px-6 pb-24 pt-20">
+        {/* Quiet header */}
+        <header className="text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700/80">
             {TRACK_TITLE}
           </p>
-          <h1 className="mt-1 text-3xl font-bold text-slate-800">
-            Day {loop.day} of {TRACK_LENGTH}
+          <h1 className="mt-3 font-serif text-3xl text-stone-800">
+            Day {loop.day}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Theme: {loop.theme}</p>
-        </div>
-
-        {/* Day progress strip */}
-        <div className="mt-6 flex flex-wrap justify-center gap-1.5">
-          {Array.from({ length: TRACK_LENGTH }, (_, i) => i + 1).map((d) => {
-            const unlocked = d <= currentDay;
-            const active = d === viewDay;
-            return (
-              <button
-                key={d}
-                disabled={!unlocked}
-                onClick={() => unlocked && setViewDay(d)}
-                aria-label={`Day ${d}${unlocked ? "" : " (locked)"}`}
-                className={[
-                  "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors",
-                  active
-                    ? "bg-green-600 text-white"
-                    : unlocked
-                      ? "bg-white text-slate-700 hover:bg-green-50"
-                      : "cursor-not-allowed bg-white/50 text-slate-300",
-                ].join(" ")}
-              >
-                {unlocked ? d : <Lock className="h-3 w-3" />}
-              </button>
-            );
-          })}
-        </div>
+          <div className="mx-auto mt-5 max-w-[220px]">
+            <div className="h-1 rounded-full bg-stone-200">
+              <div
+                className="h-1 rounded-full bg-green-600 transition-all"
+                style={{ width: `${(loop.day / TRACK_LENGTH) * 100}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-stone-400">
+              Day {loop.day} of {TRACK_LENGTH} · {loop.theme}
+            </p>
+          </div>
+        </header>
 
         {/* Scripture Anchor */}
-        <section className="mt-8 rounded-2xl bg-white/80 p-6 shadow-sm backdrop-blur">
-          <div className="flex items-center gap-2 text-green-600">
-            <BookOpen className="h-5 w-5" />
-            <h2 className="text-lg font-semibold">Scripture Anchor</h2>
-          </div>
-          <p className="mt-3 text-sm font-medium text-slate-500">
+        <section className="mt-14">
+          <SectionLabel>Scripture</SectionLabel>
+          <p className="mt-4 text-sm font-medium text-stone-500">
             {loop.scripture.reference}
           </p>
+          <blockquote className="mt-4 font-serif text-lg leading-loose text-stone-800">
+            {esvText ?? loop.scripture.text}
+          </blockquote>
 
-          <audio
-            controls
-            preload="none"
-            src={loop.scripture.audioUrl}
-            className="mt-3 w-full"
-          >
-            Your browser does not support audio playback.
-          </audio>
+          <div className="mt-6">
+            <p className="mb-2 text-xs uppercase tracking-wider text-stone-400">
+              Listen
+            </p>
+            <audio
+              controls
+              preload="none"
+              src={loop.scripture.audioUrl}
+              className="w-full"
+            >
+              Your browser does not support audio playback.
+            </audio>
+          </div>
 
-          <p className="mt-4 leading-relaxed text-slate-700">
-            {loop.scripture.text}
-          </p>
-          <p className="mt-3 text-xs text-slate-400">
-            Text: {loop.scripture.translation}. Audio: ESV “Hear the Word”
-            (© Crossway).
+          <p className="mt-4 text-xs leading-relaxed text-stone-400">
+            {esvText
+              ? "Scripture text and audio are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway. Used by permission. All rights reserved."
+              : `Text: ${loop.scripture.translation}. Audio: ESV “Hear the Word” (© Crossway).`}
           </p>
         </section>
 
-        {/* Identity Reframe */}
-        <section className="mt-5 rounded-2xl bg-white/80 p-6 shadow-sm backdrop-blur">
-          <div className="flex items-center gap-2 text-green-600">
-            <Sparkles className="h-5 w-5" />
-            <h2 className="text-lg font-semibold">Identity Reframe</h2>
-          </div>
-          <p className="mt-3 text-xl font-medium leading-snug text-slate-800">
+        {/* Identity Reframe — the still point */}
+        <section className="mt-14">
+          <SectionLabel>Identity Reframe</SectionLabel>
+          <p className="mt-6 text-center font-serif text-2xl italic leading-relaxed text-stone-800">
             {loop.identityReframe}
           </p>
         </section>
 
         {/* Micro-Practice */}
-        <section className="mt-5 rounded-2xl bg-white/80 p-6 shadow-sm backdrop-blur">
-          <div className="flex items-center gap-2 text-green-600">
-            <Hand className="h-5 w-5" />
-            <h2 className="text-lg font-semibold">Micro-Practice</h2>
-          </div>
-          <p className="mt-1 text-xs uppercase tracking-wide text-slate-400">
-            Complete within 24 hours
+        <section className="mt-14">
+          <SectionLabel>Today’s Practice</SectionLabel>
+          <p className="mt-2 text-xs uppercase tracking-wider text-stone-400">
+            Within 24 hours
           </p>
-          <p className="mt-3 leading-relaxed text-slate-700">
+          <p className="mt-4 text-lg leading-relaxed text-stone-700">
             {loop.microPractice}
           </p>
         </section>
 
-        <Separator className="my-8" />
-
-        {/* Navigation + advancement */}
-        <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={viewDay <= 1}
-            onClick={() => setViewDay((d) => Math.max(1, d - 1))}
-          >
-            <ChevronLeft className="mr-1 h-4 w-4" />
-            Previous
-          </Button>
-
-          {canAdvance ? (
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              disabled={advancing}
-              onClick={handleAdvance}
-            >
-              {advancing ? "Saving…" : `Continue to Day ${currentDay + 1}`}
-              <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
-          ) : finishedTrack ? (
-            <span className="text-sm font-medium text-green-700">
-              Track complete 🎉
-            </span>
+        {/* Footer actions */}
+        <div className="mt-16 flex flex-col items-center gap-5">
+          {isOnCurrent ? (
+            canAdvance ? (
+              <Button
+                className="bg-green-600 px-6 hover:bg-green-700"
+                disabled={advancing}
+                onClick={handleAdvance}
+              >
+                {advancing ? "Saving…" : `Continue to Day ${currentDay + 1}`}
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            ) : awaitingNextDay ? (
+              <div className="flex flex-col items-center gap-1 text-center">
+                <Lock className="h-4 w-4 text-stone-400" />
+                <p className="text-sm text-stone-600">
+                  You’ve completed today’s loop.
+                </p>
+                <p className="text-xs text-stone-400">
+                  Day {currentDay + 1} opens tomorrow — rest in this one.
+                </p>
+              </div>
+            ) : finishedTrack ? (
+              <p className="text-center font-serif text-lg text-green-700">
+                You’ve completed the track. Well done.
+              </p>
+            ) : null
           ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={viewDay >= currentDay}
-              onClick={() =>
-                setViewDay((d) => Math.min(currentDay, d + 1))
-              }
-            >
-              Next
-              <ChevronRight className="ml-1 h-4 w-4" />
+            <Button variant="ghost" size="sm" onClick={() => setViewDay(currentDay)}>
+              Return to Day {currentDay}
             </Button>
+          )}
+
+          {/* Quiet review of earlier days */}
+          <button
+            onClick={() => setReviewOpen((v) => !v)}
+            className="text-xs text-stone-400 underline-offset-4 hover:text-stone-600 hover:underline"
+          >
+            {reviewOpen ? "Hide earlier days" : "Review earlier days"}
+          </button>
+          {reviewOpen && (
+            <div className="flex max-w-xs flex-wrap justify-center gap-1.5">
+              {Array.from({ length: TRACK_LENGTH }, (_, i) => i + 1).map((d) => {
+                const unlocked = d <= currentDay;
+                const active = d === viewDay;
+                return (
+                  <button
+                    key={d}
+                    disabled={!unlocked}
+                    onClick={() => unlocked && setViewDay(d)}
+                    aria-label={`Day ${d}${unlocked ? "" : " (locked)"}`}
+                    className={[
+                      "flex h-7 w-7 items-center justify-center rounded-full text-xs transition-colors",
+                      active
+                        ? "bg-green-600 text-white"
+                        : unlocked
+                          ? "bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-green-50"
+                          : "cursor-not-allowed text-stone-300",
+                    ].join(" ")}
+                  >
+                    {unlocked ? d : <Lock className="h-3 w-3" />}
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
     </main>
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-green-700">
+        {children}
+      </span>
+      <span className="h-px flex-1 bg-stone-200" />
+    </div>
   );
 }

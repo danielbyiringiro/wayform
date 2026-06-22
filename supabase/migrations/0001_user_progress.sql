@@ -2,11 +2,14 @@
 -- Run this in your Supabase project (SQL Editor, or `supabase db push`).
 
 create table if not exists public.user_progress (
-  user_id     uuid primary key references auth.users (id) on delete cascade,
-  track_id    text not null default 'identity-14',
-  current_day integer not null default 1 check (current_day between 1 and 14),
-  started_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  user_id                 uuid primary key references auth.users (id) on delete cascade,
+  track_id                text not null default 'identity-14',
+  current_day             integer not null default 1 check (current_day between 1 and 14),
+  -- When the current day became active. Used to time-gate the next day:
+  -- the next lesson only unlocks on a later calendar day than this.
+  current_day_started_at  timestamptz not null default now(),
+  started_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now()
 );
 
 -- Keep updated_at fresh on every change.

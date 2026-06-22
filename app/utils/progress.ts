@@ -5,8 +5,30 @@ export interface Progress {
   user_id: string;
   track_id: string;
   current_day: number;
+  current_day_started_at: string;
   started_at: string;
   updated_at: string;
+}
+
+/**
+ * The track is time-spaced: the next day only unlocks on a later calendar day
+ * (in the user's local timezone) than the day the current lesson was started.
+ * This prevents bingeing multiple days in one sitting.
+ */
+export function isNextDayUnlocked(currentDayStartedAt: string): boolean {
+  const started = new Date(currentDayStartedAt);
+  const now = new Date();
+  const startedMidnight = new Date(
+    started.getFullYear(),
+    started.getMonth(),
+    started.getDate(),
+  );
+  const nowMidnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
+  return nowMidnight.getTime() > startedMidnight.getTime();
 }
 
 /**
@@ -47,7 +69,7 @@ export async function advanceDay(
 
   const { data, error } = await supabase
     .from("user_progress")
-    .update({ current_day: next })
+    .update({ current_day: next, current_day_started_at: new Date().toISOString() })
     .eq("user_id", userId)
     .select()
     .single();
