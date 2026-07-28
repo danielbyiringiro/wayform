@@ -1,9 +1,13 @@
 import { supabase } from "@/utils/supabase";
 
+export type ChurchStatus = "attending" | "exploring";
+
 export interface Profile {
   id: string;
   email: string | null;
   is_admin: boolean;
+  church_status?: ChurchStatus | null;
+  church_name?: string | null;
 }
 
 export interface Cohort {
@@ -53,11 +57,27 @@ export interface CohortWithMembers extends Cohort {
 export async function getMyProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, is_admin")
+    .select("id, email, is_admin, church_status, church_name")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
   return (data as Profile | null) ?? null;
+}
+
+/** Update the user's optional church selection. */
+export async function updateChurch(
+  userId: string,
+  status: ChurchStatus | null,
+  name: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      church_status: status,
+      church_name: status === "attending" ? name || null : null,
+    })
+    .eq("id", userId);
+  if (error) throw error;
 }
 
 // PostgREST embeds a to-one relationship, but supabase-js infers it as an

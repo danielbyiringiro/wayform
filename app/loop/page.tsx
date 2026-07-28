@@ -10,6 +10,7 @@ import { getDailyLoop, TRACK_TITLE, TRACK_LENGTH } from "@/constants/track";
 import { Button } from "@/components/ui/button";
 import ReflectionForm from "@/components/ReflectionForm";
 import ReflectionSummary from "@/components/ReflectionSummary";
+import ChurchNudge from "@/components/ChurchNudge";
 
 type Status = "loading" | "ready" | "error";
 
@@ -171,6 +172,8 @@ export default function DailyLoopPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50">
       <div className="mx-auto max-w-xl px-6 pb-24 pt-20">
+        <ChurchNudge />
+
         {/* Quiet header */}
         <header className="text-center">
           <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700/80">

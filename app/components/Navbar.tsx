@@ -50,6 +50,11 @@ export default function Navbar({ session }: { session: Session | null }) {
                   Cohort
                 </Button>
               </Link>
+              <Link href="/profile">
+                <Button variant="ghost" size="sm">
+                  Profile
+                </Button>
+              </Link>
               {isAdmin && (
                 <Link href="/admin">
                   <Button variant="ghost" size="sm">

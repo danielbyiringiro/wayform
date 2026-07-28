@@ -8,10 +8,13 @@
 -- Profiles: mirror of auth.users so admins can list people, plus an admin flag.
 -- ---------------------------------------------------------------------------
 create table if not exists wayform.profiles (
-  id         uuid primary key references auth.users (id) on delete cascade,
-  email      text,
-  is_admin   boolean not null default false,
-  created_at timestamptz not null default now()
+  id            uuid primary key references auth.users (id) on delete cascade,
+  email         text,
+  is_admin      boolean not null default false,
+  -- Optional church integration (FR1.5): a local church or "exploring".
+  church_status text check (church_status in ('attending', 'exploring')),
+  church_name   text,
+  created_at    timestamptz not null default now()
 );
 
 -- Create a profile automatically for every new auth user.
