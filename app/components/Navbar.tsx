@@ -1,13 +1,31 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/utils/supabase";
+import { getMyProfile } from "@/utils/cohort";
 import { Button } from "@/components/ui/button";
 
 export default function Navbar({ session }: { session: Session | null }) {
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    getMyProfile(session.user.id)
+      .then((p) => {
+        if (active) setIsAdmin(!!p?.is_admin);
+      })
+      .catch(() => {
+        /* ignore — treat as non-admin */
+      });
+    return () => {
+      active = false;
+    };
+  }, [session]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -24,9 +42,21 @@ export default function Navbar({ session }: { session: Session | null }) {
           WayForm
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
           {session ? (
             <>
+              <Link href="/cohort">
+                <Button variant="ghost" size="sm">
+                  Cohort
+                </Button>
+              </Link>
+              {isAdmin && (
+                <Link href="/admin">
+                  <Button variant="ghost" size="sm">
+                    Admin
+                  </Button>
+                </Link>
+              )}
               <span className="hidden text-sm text-muted-foreground sm:inline">
                 {session.user.email}
               </span>

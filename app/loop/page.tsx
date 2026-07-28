@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Lock } from "lucide-react";
 import { supabase } from "@/utils/supabase";
 import { getOrCreateProgress, advanceDay, isNextDayUnlocked } from "@/utils/progress";
+import { getReflection, type Reflection } from "@/utils/reflection";
 import { getDailyLoop, TRACK_TITLE, TRACK_LENGTH } from "@/constants/track";
 import { Button } from "@/components/ui/button";
+import ReflectionForm from "@/components/ReflectionForm";
+import ReflectionSummary from "@/components/ReflectionSummary";
 
 type Status = "loading" | "ready" | "error";
 
@@ -26,6 +29,9 @@ export default function DailyLoopPage() {
   // the embedded KJV text if the ESV key is not configured.
   const [esvText, setEsvText] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // The reflection for the day being viewed (null if not submitted yet).
+  const [reflection, setReflection] = useState<Reflection | null>(null);
+  const [reflectionLoading, setReflectionLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -93,6 +99,27 @@ export default function DailyLoopPage() {
     };
   }, [viewDay, status]);
 
+  // Load the reflection for the day being viewed.
+  useEffect(() => {
+    if (status !== "ready" || !userId) return;
+    let active = true;
+    setReflection(null);
+    setReflectionLoading(true);
+    getReflection(userId, viewDay)
+      .then((r) => {
+        if (active) setReflection(r);
+      })
+      .catch(() => {
+        /* treat as no reflection yet */
+      })
+      .finally(() => {
+        if (active) setReflectionLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [viewDay, status, userId]);
+
   const handleAdvance = async () => {
     if (!userId) return;
     setAdvancing(true);
@@ -132,9 +159,14 @@ export default function DailyLoopPage() {
   const isOnCurrent = viewDay === currentDay;
   const hasNextDay = currentDay < TRACK_LENGTH;
   const nextDayUnlocked = isNextDayUnlocked(currentDayStartedAt);
-  const canAdvance = isOnCurrent && hasNextDay && nextDayUnlocked;
-  const awaitingNextDay = isOnCurrent && hasNextDay && !nextDayUnlocked;
-  const finishedTrack = currentDay >= TRACK_LENGTH && isOnCurrent;
+  const reflected = !!reflection;
+  // The day is "complete" once a reflection is submitted; advancing also
+  // waits for the calendar to roll over to the next day.
+  const needsReflection = isOnCurrent && !reflectionLoading && !reflected;
+  const canAdvance = isOnCurrent && hasNextDay && nextDayUnlocked && reflected;
+  const awaitingNextDay =
+    isOnCurrent && hasNextDay && !nextDayUnlocked && reflected;
+  const finishedTrack = currentDay >= TRACK_LENGTH && isOnCurrent && reflected;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50">
@@ -210,6 +242,35 @@ export default function DailyLoopPage() {
           </p>
         </section>
 
+        {/* Reflection */}
+        <section className="mt-14">
+          <SectionLabel>Reflection</SectionLabel>
+          {reflectionLoading ? (
+            <p className="mt-4 text-sm text-stone-400">
+              Loading your reflection…
+            </p>
+          ) : reflection ? (
+            <div className="mt-4">
+              <ReflectionSummary reflection={reflection} />
+            </div>
+          ) : isOnCurrent && userId ? (
+            <div className="mt-4">
+              <p className="mb-5 text-sm text-stone-500">
+                Take two quiet minutes. There are no wrong answers.
+              </p>
+              <ReflectionForm
+                userId={userId}
+                day={viewDay}
+                onSubmitted={(r) => setReflection(r)}
+              />
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-stone-400">
+              No reflection was recorded for this day.
+            </p>
+          )}
+        </section>
+
         {/* Footer actions */}
         <div className="mt-16 flex flex-col items-center gap-5">
           {isOnCurrent ? (
@@ -235,6 +296,10 @@ export default function DailyLoopPage() {
             ) : finishedTrack ? (
               <p className="text-center font-serif text-lg text-green-700">
                 You’ve completed the track. Well done.
+              </p>
+            ) : needsReflection ? (
+              <p className="text-center text-sm text-stone-500">
+                Complete today’s reflection above to finish the day.
               </p>
             ) : null
           ) : (

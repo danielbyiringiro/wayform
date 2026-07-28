@@ -1,18 +1,15 @@
--- Wayform — user progress through the 14-day formation track.
--- Lives in the `wayform` schema. Run 0000_wayform_schema.sql first.
+-- Wayform — dedicated schema, kept separate from the chatbot app's public schema.
+create schema if not exists wayform;
 
 create table if not exists wayform.user_progress (
   user_id                 uuid primary key references auth.users (id) on delete cascade,
   track_id                text not null default 'identity-14',
   current_day             integer not null default 1 check (current_day between 1 and 14),
-  -- When the current day became active. Used to time-gate the next day:
-  -- the next lesson only unlocks on a later calendar day than this.
   current_day_started_at  timestamptz not null default now(),
   started_at              timestamptz not null default now(),
   updated_at              timestamptz not null default now()
 );
 
--- Shared trigger to keep updated_at fresh (reused by other tables).
 create or replace function wayform.set_updated_at()
 returns trigger
 language plpgsql
@@ -28,7 +25,6 @@ create trigger user_progress_set_updated_at
   before update on wayform.user_progress
   for each row execute function wayform.set_updated_at();
 
--- Row Level Security: a user may only ever read or write their own row.
 alter table wayform.user_progress enable row level security;
 
 drop policy if exists "select own progress" on wayform.user_progress;

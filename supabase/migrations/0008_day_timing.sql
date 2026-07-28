@@ -1,6 +1,6 @@
 -- Wayform — add day-timing for time-spaced progression.
--- Safe to run on an existing wayform.user_progress table (additive). If you
--- ran the current 0001, that file already includes this column; skip this.
+-- Safe to run on an existing user_progress table (additive). If you have not
+-- yet run 0001, that file already includes this column and you can skip this.
 
 alter table wayform.user_progress
   add column if not exists current_day_started_at timestamptz not null default now();
