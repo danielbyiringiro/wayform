@@ -47,10 +47,17 @@ export function formatSchedule(
 export interface CohortMember {
   user_id: string;
   email: string | null;
+  pair_id: string;
 }
 
 export interface CohortWithMembers extends Cohort {
   members: CohortMember[];
+}
+
+/** A pair (active only) for admin assignment, with both partners' emails. */
+export interface PairSummary {
+  id: string;
+  members: { user_id: string; email: string | null }[];
 }
 
 /** The signed-in user's own profile (includes the admin flag). */
@@ -59,6 +66,17 @@ export async function getMyProfile(userId: string): Promise<Profile | null> {
     .from("profiles")
     .select("id, email, is_admin, church_status, church_name")
     .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Profile | null) ?? null;
+}
+
+/** Any profile visible to the caller under RLS (self, partner, or cohort-mate). */
+export async function getProfileById(id: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, is_admin, church_status, church_name")
+    .eq("id", id)
     .maybeSingle();
   if (error) throw error;
   return (data as Profile | null) ?? null;
@@ -80,72 +98,119 @@ export async function updateChurch(
   if (error) throw error;
 }
 
-// PostgREST embeds a to-one relationship, but supabase-js infers it as an
-// array in some versions — accept either shape.
-type EmbeddedProfile =
-  | { email: string | null }
-  | { email: string | null }[]
-  | null;
-type MemberRow = { user_id: string; profiles: EmbeddedProfile };
+// --- Shared helpers: pairs -> members, with emails looked up separately ---
+// (pairs.user_a/user_b reference auth.users, not wayform.profiles directly,
+// so PostgREST can't embed profiles through a pair in one round trip.)
 
-function profileEmail(p: EmbeddedProfile): string | null {
-  if (!p) return null;
-  return Array.isArray(p) ? (p[0]?.email ?? null) : p.email;
+type PairRow = { id: string; user_a: string; user_b: string | null };
+
+async function emailsFor(userIds: string[]): Promise<Map<string, string | null>> {
+  const unique = Array.from(new Set(userIds));
+  if (unique.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .in("id", unique);
+  if (error) throw error;
+  const map = new Map<string, string | null>();
+  for (const row of (data as { id: string; email: string | null }[]) ?? []) {
+    map.set(row.id, row.email);
+  }
+  return map;
 }
 
-function toMembers(rows: MemberRow[] | null | undefined): CohortMember[] {
-  return (rows ?? []).map((m) => ({
-    user_id: m.user_id,
-    email: profileEmail(m.profiles),
+function pairMembers(
+  pair: PairRow,
+  emails: Map<string, string | null>,
+): CohortMember[] {
+  const ids = [pair.user_a, pair.user_b].filter((id): id is string => !!id);
+  return ids.map((id) => ({
+    user_id: id,
+    email: emails.get(id) ?? null,
+    pair_id: pair.id,
   }));
 }
 
-/** The user's cohort with its member list, or null if unassigned. */
+/** The user's cohort with its member list (grouped by pair), or null. */
 export async function getMyCohort(): Promise<CohortWithMembers | null> {
-  const { data, error } = await supabase
+  const { data: cohort, error } = await supabase
     .from("cohorts")
-    .select(
-      "id, name, meeting_url, meeting_day, meeting_time, created_at, cohort_members(user_id, profiles(email))",
-    )
+    .select("id, name, meeting_url, meeting_day, meeting_time, created_at")
     .maybeSingle();
-
   if (error) throw error;
-  if (!data) return null;
+  if (!cohort) return null;
 
-  const { cohort_members, ...cohort } = data as unknown as Cohort & {
-    cohort_members: MemberRow[];
-  };
-  return { ...cohort, members: toMembers(cohort_members) };
+  const { data: cohortPairs, error: cpError } = await supabase
+    .from("cohort_pairs")
+    .select("pair_id, pairs(id, user_a, user_b)")
+    .eq("cohort_id", cohort.id);
+  if (cpError) throw cpError;
+
+  const pairs = ((cohortPairs ?? []) as unknown as { pairs: PairRow | PairRow[] }[])
+    .map((row) => (Array.isArray(row.pairs) ? row.pairs[0] : row.pairs))
+    .filter((p): p is PairRow => !!p);
+
+  const emails = await emailsFor(pairs.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]));
+
+  return { ...(cohort as Cohort), members: pairs.flatMap((p) => pairMembers(p, emails)) };
 }
 
 // --- Admin helpers -------------------------------------------------------
 
-/** All profiles (admin only — RLS returns nothing for non-admins). */
-export async function listProfiles(): Promise<Profile[]> {
+/** Active pairs available for cohort assignment (admin only). */
+export async function listPairs(): Promise<PairSummary[]> {
   const { data, error } = await supabase
-    .from("profiles")
-    .select("id, email, is_admin")
-    .order("email");
-  if (error) throw error;
-  return (data as Profile[]) ?? [];
-}
-
-/** All cohorts with members (admin only). */
-export async function listCohorts(): Promise<CohortWithMembers[]> {
-  const { data, error } = await supabase
-    .from("cohorts")
-    .select(
-      "id, name, meeting_url, meeting_day, meeting_time, created_at, cohort_members(user_id, profiles(email))",
-    )
+    .from("pairs")
+    .select("id, user_a, user_b")
+    .eq("status", "active")
     .order("created_at");
   if (error) throw error;
 
-  return (
-    (data as unknown as (Cohort & { cohort_members: MemberRow[] })[]) ?? []
-  ).map(({ cohort_members, ...cohort }) => ({
-    ...cohort,
-    members: toMembers(cohort_members),
+  const rows = (data as PairRow[]) ?? [];
+  const emails = await emailsFor(rows.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]));
+
+  return rows.map((p) => ({
+    id: p.id,
+    members: [p.user_a, p.user_b]
+      .filter((id): id is string => !!id)
+      .map((id) => ({ user_id: id, email: emails.get(id) ?? null })),
   }));
+}
+
+/** All cohorts with their assigned pairs (admin only). */
+export async function listCohorts(): Promise<CohortWithMembers[]> {
+  const { data: cohorts, error } = await supabase
+    .from("cohorts")
+    .select("id, name, meeting_url, meeting_day, meeting_time, created_at")
+    .order("created_at");
+  if (error) throw error;
+
+  const { data: cohortPairs, error: cpError } = await supabase
+    .from("cohort_pairs")
+    .select("cohort_id, pairs(id, user_a, user_b)");
+  if (cpError) throw cpError;
+
+  const rows = (cohortPairs ?? []) as unknown as {
+    cohort_id: string;
+    pairs: PairRow | PairRow[];
+  }[];
+  const allPairs = rows
+    .map((r) => (Array.isArray(r.pairs) ? r.pairs[0] : r.pairs))
+    .filter((p): p is PairRow => !!p);
+  const emails = await emailsFor(
+    allPairs.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]),
+  );
+
+  return ((cohorts as Cohort[]) ?? []).map((cohort) => {
+    const pairsForCohort = rows
+      .filter((r) => r.cohort_id === cohort.id)
+      .map((r) => (Array.isArray(r.pairs) ? r.pairs[0] : r.pairs))
+      .filter((p): p is PairRow => !!p);
+    return {
+      ...cohort,
+      members: pairsForCohort.flatMap((p) => pairMembers(p, emails)),
+    };
+  });
 }
 
 export async function createCohort(
@@ -189,21 +254,21 @@ export async function deleteCohort(cohortId: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Assign a user to a cohort (throws if the cohort already has 6 members). */
-export async function assignMember(
+/** Assign a pair to a cohort (throws if the cohort already has 3 pairs). */
+export async function assignPair(
   cohortId: string,
-  userId: string,
+  pairId: string,
 ): Promise<void> {
   const { error } = await supabase
-    .from("cohort_members")
-    .insert({ cohort_id: cohortId, user_id: userId });
+    .from("cohort_pairs")
+    .insert({ cohort_id: cohortId, pair_id: pairId });
   if (error) throw error;
 }
 
-export async function removeMember(userId: string): Promise<void> {
+export async function removePair(pairId: string): Promise<void> {
   const { error } = await supabase
-    .from("cohort_members")
+    .from("cohort_pairs")
     .delete()
-    .eq("user_id", userId);
+    .eq("pair_id", pairId);
   if (error) throw error;
 }

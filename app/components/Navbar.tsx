@@ -45,6 +45,11 @@ export default function Navbar({ session }: { session: Session | null }) {
         <div className="flex items-center gap-1 sm:gap-3">
           {session ? (
             <>
+              <Link href="/pair">
+                <Button variant="ghost" size="sm">
+                  Pair
+                </Button>
+              </Link>
               <Link href="/cohort">
                 <Button variant="ghost" size="sm">
                   Cohort

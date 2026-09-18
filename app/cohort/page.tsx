@@ -67,7 +67,7 @@ export default function CohortPage() {
         {status === "error" && (
           <p className="mx-auto mt-12 max-w-md text-center text-sm leading-relaxed text-stone-600">
             Could not load your cohort. Make sure the cohorts tables have been
-            created in Supabase (see supabase/migrations/0004_cohorts.sql).
+            created in Supabase (see supabase/migrations/0011_pairs_and_study_plans.sql).
           </p>
         )}
 

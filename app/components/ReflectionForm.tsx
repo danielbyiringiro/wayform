@@ -68,11 +68,13 @@ function PromptField({
 
 export default function ReflectionForm({
   userId,
-  day,
+  pairId,
+  dayIndex,
   onSubmitted,
 }: {
   userId: string;
-  day: number;
+  pairId: string;
+  dayIndex: number;
   onSubmitted: (reflection: Reflection) => void;
 }) {
   const [attempted, setAttempted] = useState<Attempted | null>(null);
@@ -80,6 +82,10 @@ export default function ReflectionForm({
   const [resistanceMode, setResistanceMode] = useState<Mode>("text");
   const [resistanceText, setResistanceText] = useState("");
   const [resistanceBlob, setResistanceBlob] = useState<Blob | null>(null);
+
+  const [changeMode, setChangeMode] = useState<Mode>("text");
+  const [changeText, setChangeText] = useState("");
+  const [changeBlob, setChangeBlob] = useState<Blob | null>(null);
 
   const [noticedMode, setNoticedMode] = useState<Mode>("text");
   const [noticedText, setNoticedText] = useState("");
@@ -104,6 +110,14 @@ export default function ReflectionForm({
       setError("Record a voice note for the resistance prompt, or switch to Write.");
       return;
     }
+    if (changeMode === "text" && !changeText.trim()) {
+      setError("Add a note or record a voice note for the change prompt.");
+      return;
+    }
+    if (changeMode === "voice" && !changeBlob) {
+      setError("Record a voice note for the change prompt, or switch to Write.");
+      return;
+    }
     if (noticedMode === "text" && !noticedText.trim()) {
       setError("Add a note or record a voice note for the last prompt.");
       return;
@@ -117,19 +131,26 @@ export default function ReflectionForm({
     try {
       const resistanceAudioPath =
         resistanceMode === "voice" && resistanceBlob
-          ? await uploadVoiceNote(userId, day, "resistance", resistanceBlob)
+          ? await uploadVoiceNote(userId, pairId, dayIndex, "resistance", resistanceBlob)
+          : null;
+      const changeAudioPath =
+        changeMode === "voice" && changeBlob
+          ? await uploadVoiceNote(userId, pairId, dayIndex, "change", changeBlob)
           : null;
       const noticedAudioPath =
         noticedMode === "voice" && noticedBlob
-          ? await uploadVoiceNote(userId, day, "noticed", noticedBlob)
+          ? await uploadVoiceNote(userId, pairId, dayIndex, "noticed", noticedBlob)
           : null;
 
       const reflection = await submitReflection({
+        pairId,
         userId,
-        day,
+        dayIndex,
         attempted,
         resistanceText: resistanceMode === "text" ? resistanceText.trim() : null,
         resistanceAudioPath,
+        changeText: changeMode === "text" ? changeText.trim() : null,
+        changeAudioPath,
         noticedText: noticedMode === "text" ? noticedText.trim() : null,
         noticedAudioPath,
       });
@@ -180,6 +201,15 @@ export default function ReflectionForm({
         text={resistanceText}
         onText={setResistanceText}
         onBlob={setResistanceBlob}
+      />
+
+      <PromptField
+        question="What is this passage challenging you to change?"
+        mode={changeMode}
+        onMode={setChangeMode}
+        text={changeText}
+        onText={setChangeText}
+        onBlob={setChangeBlob}
       />
 
       <PromptField

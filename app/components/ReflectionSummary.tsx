@@ -45,11 +45,19 @@ function Answer({
 
 export default function ReflectionSummary({
   reflection,
+  label,
 }: {
   reflection: Reflection;
+  /** Optional heading, e.g. "You" or "Your partner", when showing both. */
+  label?: string;
 }) {
   return (
     <div className="space-y-5 rounded-2xl border border-stone-200/70 bg-white/60 p-5">
+      {label && (
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-green-700">
+          {label}
+        </p>
+      )}
       <div>
         <p className="text-sm font-medium text-stone-500">
           Did you attempt the practice?
@@ -63,6 +71,12 @@ export default function ReflectionSummary({
         question="What resistance did you feel?"
         text={reflection.resistance_text}
         audioPath={reflection.resistance_audio_path}
+      />
+
+      <Answer
+        question="What is this passage challenging you to change?"
+        text={reflection.change_text}
+        audioPath={reflection.change_audio_path}
       />
 
       <Answer

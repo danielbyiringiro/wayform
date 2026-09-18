@@ -6,18 +6,22 @@ import { Trash2, UserPlus, AlertTriangle } from "lucide-react";
 import { supabase } from "@/utils/supabase";
 import {
   getMyProfile,
-  listProfiles,
+  listPairs,
   listCohorts,
   createCohort,
   updateCohort,
   deleteCohort,
-  assignMember,
-  removeMember,
+  assignPair,
+  removePair,
   formatSchedule,
   WEEKDAYS,
-  type Profile,
+  type PairSummary,
   type CohortWithMembers,
 } from "@/utils/cohort";
+
+function pairLabel(pair: PairSummary): string {
+  return pair.members.map((m) => m.email ?? m.user_id.slice(0, 8)).join(" & ");
+}
 
 function timeValue(t: string | null): string {
   return t ? t.slice(0, 5) : "";
@@ -28,7 +32,7 @@ type Status = "loading" | "ready" | "error";
 export default function AdminPage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("loading");
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [pairs, setPairs] = useState<PairSummary[]>([]);
   const [cohorts, setCohorts] = useState<CohortWithMembers[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,8 +42,8 @@ export default function AdminPage() {
   const [newTime, setNewTime] = useState("");
 
   const refresh = useCallback(async () => {
-    const [p, c] = await Promise.all([listProfiles(), listCohorts()]);
-    setProfiles(p);
+    const [p, c] = await Promise.all([listPairs(), listCohorts()]);
+    setPairs(p);
     setCohorts(c);
   }, []);
 
@@ -81,10 +85,10 @@ export default function AdminPage() {
     }
   };
 
-  const assignedIds = new Set(
-    cohorts.flatMap((c) => c.members.map((m) => m.user_id)),
+  const assignedPairIds = new Set(
+    cohorts.flatMap((c) => c.members.map((m) => m.pair_id)),
   );
-  const unassigned = profiles.filter((p) => !assignedIds.has(p.id));
+  const unassigned = pairs.filter((p) => !assignedPairIds.has(p.id));
 
   if (status === "loading") {
     return (
@@ -99,7 +103,7 @@ export default function AdminPage() {
       <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
         <p className="max-w-md text-center text-sm leading-relaxed text-stone-600">
           Could not load admin data. Make sure migration
-          0004_cohorts.sql has been run in Supabase.
+          0011_pairs_and_study_plans.sql has been run in Supabase.
         </p>
       </main>
     );
@@ -110,8 +114,8 @@ export default function AdminPage() {
       <div className="mx-auto max-w-3xl px-6 pb-24 pt-24">
         <h1 className="font-serif text-3xl text-stone-800">Cohort management</h1>
         <p className="mt-2 text-sm text-stone-500">
-          Assign people to micro-cohorts of 4–6 and set each group’s weekly
-          meeting link.
+          Assign pairs to weekly micro-cohorts of 2–3 pairs (4–6 people) and
+          set each group’s meeting link.
         </p>
 
         {error && (
@@ -195,16 +199,16 @@ export default function AdminPage() {
               unassigned={unassigned}
               onSave={(fields) => run(() => updateCohort(cohort.id, fields))}
               onDelete={() => run(() => deleteCohort(cohort.id))}
-              onAssign={(userId) => run(() => assignMember(cohort.id, userId))}
-              onRemove={(userId) => run(() => removeMember(userId))}
+              onAssign={(pairId) => run(() => assignPair(cohort.id, pairId))}
+              onRemove={(pairId) => run(() => removePair(pairId))}
             />
           ))}
         </section>
 
-        {/* Unassigned users */}
+        {/* Unassigned pairs */}
         <section className="mt-8">
           <h2 className="font-semibold text-stone-800">
-            Unassigned people ({unassigned.length})
+            Unassigned pairs ({unassigned.length})
           </h2>
           <ul className="mt-3 flex flex-wrap gap-2">
             {unassigned.map((p) => (
@@ -212,11 +216,11 @@ export default function AdminPage() {
                 key={p.id}
                 className="rounded-full bg-white px-3 py-1 text-sm text-stone-600 ring-1 ring-stone-200"
               >
-                {p.email ?? p.id.slice(0, 8)}
+                {pairLabel(p)}
               </li>
             ))}
             {unassigned.length === 0 && (
-              <li className="text-sm text-stone-400">Everyone is assigned.</li>
+              <li className="text-sm text-stone-400">Every pair is assigned.</li>
             )}
           </ul>
         </section>
@@ -234,15 +238,15 @@ function CohortCard({
   onRemove,
 }: {
   cohort: CohortWithMembers;
-  unassigned: Profile[];
+  unassigned: PairSummary[];
   onSave: (fields: {
     meeting_url: string | null;
     meeting_day: number | null;
     meeting_time: string | null;
   }) => void;
   onDelete: () => void;
-  onAssign: (userId: string) => void;
-  onRemove: (userId: string) => void;
+  onAssign: (pairId: string) => void;
+  onRemove: (pairId: string) => void;
 }) {
   const [url, setUrl] = useState(cohort.meeting_url ?? "");
   const [day, setDay] = useState(
@@ -251,9 +255,16 @@ function CohortCard({
   const [time, setTime] = useState(timeValue(cohort.meeting_time));
   const [pick, setPick] = useState("");
 
+  const pairGroups = new Map<string, { user_id: string; email: string | null }[]>();
+  for (const m of cohort.members) {
+    const list = pairGroups.get(m.pair_id) ?? [];
+    list.push({ user_id: m.user_id, email: m.email });
+    pairGroups.set(m.pair_id, list);
+  }
+
   const count = cohort.members.length;
   const underfilled = count < 4;
-  const full = count >= 6;
+  const full = pairGroups.size >= 3;
   const schedulePreview = formatSchedule(
     day === "" ? null : Number(day),
     time || null,
@@ -271,7 +282,8 @@ function CohortCard({
             ].join(" ")}
           >
             {underfilled && <AlertTriangle className="h-3.5 w-3.5" />}
-            {count} of 4–6 members{full ? " · full" : ""}
+            {count} of 4–6 members ({pairGroups.size} of 2–3 pairs)
+            {full ? " · full" : ""}
           </p>
         </div>
         <button
@@ -334,16 +346,18 @@ function CohortCard({
         )}
       </div>
 
-      {/* Members */}
+      {/* Pairs */}
       <ul className="mt-4 space-y-2">
-        {cohort.members.map((m) => (
+        {Array.from(pairGroups.entries()).map(([pairId, members]) => (
           <li
-            key={m.user_id}
+            key={pairId}
             className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700"
           >
-            <span>{m.email ?? m.user_id.slice(0, 8)}</span>
+            <span>
+              {members.map((m) => m.email ?? m.user_id.slice(0, 8)).join(" & ")}
+            </span>
             <button
-              onClick={() => onRemove(m.user_id)}
+              onClick={() => onRemove(pairId)}
               className="text-xs text-stone-400 hover:text-red-600"
             >
               Remove
@@ -352,7 +366,7 @@ function CohortCard({
         ))}
       </ul>
 
-      {/* Add member */}
+      {/* Add pair */}
       {!full && (
         <div className="mt-4 flex gap-2">
           <select
@@ -360,10 +374,10 @@ function CohortCard({
             onChange={(e) => setPick(e.target.value)}
             className="flex-1 rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-green-600"
           >
-            <option value="">Add a person…</option>
+            <option value="">Add a pair…</option>
             {unassigned.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.email ?? p.id.slice(0, 8)}
+                {p.members.map((m) => m.email ?? m.user_id.slice(0, 8)).join(" & ")}
               </option>
             ))}
           </select>
