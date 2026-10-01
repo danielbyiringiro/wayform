@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Wayform",
-  description: "Embodied Growth",
+  description:
+    "Bible study for two. Pair up with one person, choose a plan, and read, practice, and reflect together a few minutes a day.",
 };
 
 export default function RootLayout({
