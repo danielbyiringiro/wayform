@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Lock } from "lucide-react";
+import { ChevronDown, ChevronRight, Lock } from "lucide-react";
 import { supabase } from "@/utils/supabase";
 import {
   getMyPair,
@@ -118,6 +118,11 @@ function SectionLabel({ children }: { children: string }) {
 // unlocks tomorrow's section.
 // ---------------------------------------------------------------------------
 
+interface Block {
+  kind: "text" | "question" | "heading" | "quote";
+  text: string;
+}
+
 interface AbsgData {
   quarterTitle: string;
   weekTitle: string;
@@ -125,7 +130,99 @@ interface AbsgData {
   weekNumber: number;
   dayOfWeek: number;
   date: string; // YYYY-MM-DD
-  paragraphs: string[];
+  blocks: Block[];
+  additionalTitle: string | null;
+  additional: Block[];
+}
+
+/**
+ * The ESV API marks verses inline as "[3]". Render those as small raised
+ * numbers so the passage still reads as prose.
+ */
+function PassageText({ text }: { text: string }) {
+  const parts = text.split(/\[(\d+)\]/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <sup
+            key={i}
+            className="mr-0.5 align-super text-[0.65em] font-medium text-green-700/70"
+          >
+            {part}
+          </sup>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** One lesson block, styled by kind the way the printed guide sets them. */
+function LessonBlock({ block }: { block: Block }) {
+  switch (block.kind) {
+    case "question":
+      return (
+        <div className="rounded-2xl border border-green-700/20 bg-green-50/50 p-5">
+          <p className="font-medium leading-relaxed text-stone-800">
+            {block.text}
+          </p>
+        </div>
+      );
+    case "quote":
+      return (
+        <blockquote className="border-l-2 border-green-700/30 pl-5 font-serif text-lg italic leading-loose text-stone-700">
+          {block.text}
+        </blockquote>
+      );
+    case "heading":
+      return (
+        <p className="font-serif text-xl text-stone-800">{block.text}</p>
+      );
+    default:
+      return (
+        <p className="whitespace-pre-line font-serif text-lg leading-loose text-stone-800">
+          {block.text}
+        </p>
+      );
+  }
+}
+
+/** Supplementary material, tucked behind a disclosure like the printed guide. */
+function AdditionalReading({
+  title,
+  blocks,
+}: {
+  title: string;
+  blocks: Block[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-8 rounded-2xl border border-stone-200/70 bg-white/50">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+      >
+        <span className="text-sm font-medium text-stone-700">{title}</span>
+        <ChevronDown
+          className={[
+            "h-4 w-4 shrink-0 text-stone-400 transition-transform",
+            open ? "rotate-180" : "",
+          ].join(" ")}
+        />
+      </button>
+      {open && (
+        <div className="space-y-5 border-t border-stone-200/70 px-5 pb-6 pt-5">
+          {blocks.map((block, i) => (
+            <LessonBlock key={i} block={block} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function dateToDayIndex(isoDate: string): number {
@@ -210,26 +307,33 @@ function AbsgLoop({ pair, userId }: { pair: Pair; userId: string }) {
 
         <header className="text-center">
           <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700/80">
-            {planLabel("absg")}
+            {dateLabel}
           </p>
-          <h1 className="mt-3 font-serif text-3xl text-stone-800">
-            {DAY_NAMES[absg.dayOfWeek - 1] ?? "Today"}
+          <h1 className="mt-3 font-serif text-3xl leading-tight text-stone-800">
+            {absg.dayTitle || absg.weekTitle}
           </h1>
-          <p className="mt-2 text-xs text-stone-400">
-            {dateLabel} · Week {absg.weekNumber} · {absg.quarterTitle}
+          <p className="mt-3 text-xs text-stone-400">
+            {DAY_NAMES[absg.dayOfWeek - 1] ?? "Today"} · Week {absg.weekNumber}{" "}
+            · {absg.weekTitle} · {absg.quarterTitle}
           </p>
         </header>
 
         <section className="mt-14">
-          <SectionLabel>{absg.dayTitle || absg.weekTitle}</SectionLabel>
-          <div className="mt-4 space-y-4">
-            {absg.paragraphs.map((p, i) => (
-              <p key={i} className="font-serif text-lg leading-loose text-stone-800">
-                {p}
-              </p>
+          <SectionLabel>This Week&rsquo;s Study</SectionLabel>
+          <div className="mt-6 space-y-5">
+            {absg.blocks.map((block, i) => (
+              <LessonBlock key={i} block={block} />
             ))}
           </div>
-          <p className="mt-4 text-xs leading-relaxed text-stone-400">
+
+          {absg.additional.length > 0 && (
+            <AdditionalReading
+              title={absg.additionalTitle ?? "Additional Reading"}
+              blocks={absg.additional}
+            />
+          )}
+
+          <p className="mt-6 text-xs leading-relaxed text-stone-400">
             Sabbath School Adult Bible Study Guide, fetched live for today from
             the official lesson content.
           </p>
@@ -432,7 +536,7 @@ function PacedLoop({
           </p>
           {esvText ? (
             <blockquote className="mt-4 font-serif text-lg leading-loose text-stone-800">
-              {esvText}
+              <PassageText text={esvText} />
             </blockquote>
           ) : esvFailed ? (
             <p className="mt-4 text-sm leading-relaxed text-stone-500">

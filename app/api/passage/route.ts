@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
   const params = new URLSearchParams({
     q,
     "include-passage-references": "false",
-    "include-verse-numbers": "false",
-    "include-first-verse-numbers": "false",
+    "include-verse-numbers": "true",
+    "include-first-verse-numbers": "true",
     "include-footnotes": "false",
     "include-headings": "false",
     "include-short-copyright": "false",

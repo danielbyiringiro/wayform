@@ -74,29 +74,87 @@ async function findQuarter(
   return null;
 }
 
-function cleanParagraph(text: string): string {
+// The lesson markdown uses a small, consistent vocabulary:
+//   `backticks`  → a study question (the official app shows these as a
+//                  prompt card with space to answer)
+//   #### / ###   → a section heading, e.g. "Additional Reading"
+//   >            → a pull quote, e.g. the week's Memory Text
+//   ---          → a separator before the supplementary material
+export type BlockKind = "text" | "question" | "heading" | "quote";
+export interface Block {
+  kind: BlockKind;
+  text: string;
+  /** Heading depth, for headings only. "###" stays inline; "####" starts the
+   *  supplementary reading at the end of the day's section. */
+  level?: number;
+}
+
+function clean(text: string): string {
   return text
     .replace(/<\/?p>/g, "")
-    .replace(/^#+\s*/, "")
-    .replace(/^>\s?/gm, "")
     .replace(/\\\s*$/gm, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/[_*`]/g, "")
     .trim();
 }
 
-function parseDayFile(raw: string): { title: string | null; paragraphs: string[] } {
+function toBlocks(paragraph: string): Block[] {
+  const trimmed = paragraph.trim();
+  if (!trimmed || /^-{3,}$/.test(trimmed)) return [];
+
+  if (trimmed.startsWith("`") && trimmed.endsWith("`")) {
+    return [{ kind: "question", text: clean(trimmed) }];
+  }
+  if (trimmed.startsWith("#")) {
+    // A heading and the lines under it share one chunk when the source has no
+    // blank line between them (e.g. "Read for This Week's Study" + its texts).
+    const [headingLine, ...rest] = trimmed.split("\n");
+    const level = (headingLine.match(/^#+/) ?? ["#"])[0].length;
+    const blocks: Block[] = [
+      { kind: "heading", level, text: clean(headingLine.replace(/^#+\s*/, "")) },
+    ];
+    const body = clean(rest.join("\n"));
+    if (body) blocks.push({ kind: "text", text: body });
+    return blocks;
+  }
+  if (trimmed.startsWith(">")) {
+    return [{ kind: "quote", text: clean(trimmed.replace(/^>\s?/gm, "")) }];
+  }
+  return [{ kind: "text", text: clean(trimmed) }];
+}
+
+function parseDayFile(raw: string): {
+  title: string | null;
+  blocks: Block[];
+  additionalTitle: string | null;
+  additional: Block[];
+} {
   const frontmatterMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
   const frontmatter = frontmatterMatch ? frontmatterMatch[1] : "";
   const body = frontmatterMatch ? raw.slice(frontmatterMatch[0].length) : raw;
   const title = yamlValue(frontmatter, "title");
 
-  const paragraphs = body
+  const all = body
     .split(/\n\s*\n/)
-    .map(cleanParagraph)
-    .filter((p) => p.length > 0 && p !== "---");
+    .flatMap(toBlocks)
+    .filter((b) => b.text.length > 0);
 
-  return { title, paragraphs };
+  // Everything from the first h4 onward is supplementary reading, which the
+  // official app tucks behind a disclosure rather than showing inline. Shallower
+  // headings ("Read for This Week's Study") belong to the lesson itself.
+  const splitAt = all.findIndex(
+    (b) => b.kind === "heading" && (b.level ?? 0) >= 4,
+  );
+  if (splitAt === -1) {
+    return { title, blocks: all, additionalTitle: null, additional: [] };
+  }
+
+  return {
+    title,
+    blocks: all.slice(0, splitAt),
+    additionalTitle: all[splitAt].text,
+    additional: all.slice(splitAt + 1),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -132,7 +190,8 @@ export async function GET(request: NextRequest) {
   }
 
   const weekTitle = weekYaml ? yamlValue(weekYaml, "title") : null;
-  const { title: dayTitle, paragraphs } = parseDayFile(dayRaw);
+  const { title: dayTitle, blocks, additionalTitle, additional } =
+    parseDayFile(dayRaw);
 
   return Response.json({
     quarterTitle: quarter.info.title,
@@ -141,6 +200,8 @@ export async function GET(request: NextRequest) {
     weekNumber,
     dayOfWeek,
     date: today.toISOString().slice(0, 10),
-    paragraphs,
+    blocks,
+    additionalTitle,
+    additional,
   });
 }
