@@ -19,8 +19,16 @@ import {
   type CohortWithMembers,
 } from "@/utils/cohort";
 
+function personLabel(m: {
+  full_name: string | null;
+  email: string | null;
+  user_id: string;
+}): string {
+  return m.full_name ?? m.email ?? m.user_id.slice(0, 8);
+}
+
 function pairLabel(pair: PairSummary): string {
-  return pair.members.map((m) => m.email ?? m.user_id.slice(0, 8)).join(" & ");
+  return pair.members.map(personLabel).join(" & ");
 }
 
 function timeValue(t: string | null): string {
@@ -255,10 +263,13 @@ function CohortCard({
   const [time, setTime] = useState(timeValue(cohort.meeting_time));
   const [pick, setPick] = useState("");
 
-  const pairGroups = new Map<string, { user_id: string; email: string | null }[]>();
+  const pairGroups = new Map<
+    string,
+    { user_id: string; email: string | null; full_name: string | null }[]
+  >();
   for (const m of cohort.members) {
     const list = pairGroups.get(m.pair_id) ?? [];
-    list.push({ user_id: m.user_id, email: m.email });
+    list.push({ user_id: m.user_id, email: m.email, full_name: m.full_name });
     pairGroups.set(m.pair_id, list);
   }
 
@@ -354,7 +365,7 @@ function CohortCard({
             className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700"
           >
             <span>
-              {members.map((m) => m.email ?? m.user_id.slice(0, 8)).join(" & ")}
+              {members.map(personLabel).join(" & ")}
             </span>
             <button
               onClick={() => onRemove(pairId)}
@@ -377,7 +388,7 @@ function CohortCard({
             <option value="">Add a pair…</option>
             {unassigned.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.members.map((m) => m.email ?? m.user_id.slice(0, 8)).join(" & ")}
+                {p.members.map(personLabel).join(" & ")}
               </option>
             ))}
           </select>

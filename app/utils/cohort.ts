@@ -5,9 +5,23 @@ export type ChurchStatus = "attending" | "exploring";
 export interface Profile {
   id: string;
   email: string | null;
+  full_name: string | null;
   is_admin: boolean;
   church_status?: ChurchStatus | null;
   church_name?: string | null;
+}
+
+/**
+ * How a person is shown to their partner and cohort: first name when we have
+ * one from their sign-in, otherwise the part of the email before the "@".
+ */
+export function firstName(
+  fullName: string | null | undefined,
+  email: string | null | undefined,
+): string {
+  const first = fullName?.trim().split(/\s+/)[0];
+  if (first) return first;
+  return email?.split("@")[0] || "Your partner";
 }
 
 export interface Cohort {
@@ -47,6 +61,7 @@ export function formatSchedule(
 export interface CohortMember {
   user_id: string;
   email: string | null;
+  full_name: string | null;
   pair_id: string;
 }
 
@@ -54,17 +69,17 @@ export interface CohortWithMembers extends Cohort {
   members: CohortMember[];
 }
 
-/** A pair (active only) for admin assignment, with both partners' emails. */
+/** A pair (active only) for admin assignment, with both partners named. */
 export interface PairSummary {
   id: string;
-  members: { user_id: string; email: string | null }[];
+  members: { user_id: string; email: string | null; full_name: string | null }[];
 }
 
 /** The signed-in user's own profile (includes the admin flag). */
 export async function getMyProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, is_admin, church_status, church_name")
+    .select("id, email, full_name, is_admin, church_status, church_name")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
@@ -75,7 +90,7 @@ export async function getMyProfile(userId: string): Promise<Profile | null> {
 export async function getProfileById(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, is_admin, church_status, church_name")
+    .select("id, email, full_name, is_admin, church_status, church_name")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -98,35 +113,37 @@ export async function updateChurch(
   if (error) throw error;
 }
 
-// --- Shared helpers: pairs -> members, with emails looked up separately ---
+// --- Shared helpers: pairs -> members, with people looked up separately ---
 // (pairs.user_a/user_b reference auth.users, not wayform.profiles directly,
 // so PostgREST can't embed profiles through a pair in one round trip.)
 
 type PairRow = { id: string; user_a: string; user_b: string | null };
+type PersonRow = { id: string; email: string | null; full_name: string | null };
 
-async function emailsFor(userIds: string[]): Promise<Map<string, string | null>> {
+async function peopleFor(userIds: string[]): Promise<Map<string, PersonRow>> {
   const unique = Array.from(new Set(userIds));
   if (unique.length === 0) return new Map();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email")
+    .select("id, email, full_name")
     .in("id", unique);
   if (error) throw error;
-  const map = new Map<string, string | null>();
-  for (const row of (data as { id: string; email: string | null }[]) ?? []) {
-    map.set(row.id, row.email);
+  const map = new Map<string, PersonRow>();
+  for (const row of (data as PersonRow[]) ?? []) {
+    map.set(row.id, row);
   }
   return map;
 }
 
 function pairMembers(
   pair: PairRow,
-  emails: Map<string, string | null>,
+  people: Map<string, PersonRow>,
 ): CohortMember[] {
   const ids = [pair.user_a, pair.user_b].filter((id): id is string => !!id);
   return ids.map((id) => ({
     user_id: id,
-    email: emails.get(id) ?? null,
+    email: people.get(id)?.email ?? null,
+    full_name: people.get(id)?.full_name ?? null,
     pair_id: pair.id,
   }));
 }
@@ -150,9 +167,9 @@ export async function getMyCohort(): Promise<CohortWithMembers | null> {
     .map((row) => (Array.isArray(row.pairs) ? row.pairs[0] : row.pairs))
     .filter((p): p is PairRow => !!p);
 
-  const emails = await emailsFor(pairs.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]));
+  const people = await peopleFor(pairs.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]));
 
-  return { ...(cohort as Cohort), members: pairs.flatMap((p) => pairMembers(p, emails)) };
+  return { ...(cohort as Cohort), members: pairs.flatMap((p) => pairMembers(p, people)) };
 }
 
 // --- Admin helpers -------------------------------------------------------
@@ -167,13 +184,17 @@ export async function listPairs(): Promise<PairSummary[]> {
   if (error) throw error;
 
   const rows = (data as PairRow[]) ?? [];
-  const emails = await emailsFor(rows.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]));
+  const people = await peopleFor(rows.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]));
 
   return rows.map((p) => ({
     id: p.id,
     members: [p.user_a, p.user_b]
       .filter((id): id is string => !!id)
-      .map((id) => ({ user_id: id, email: emails.get(id) ?? null })),
+      .map((id) => ({
+        user_id: id,
+        email: people.get(id)?.email ?? null,
+        full_name: people.get(id)?.full_name ?? null,
+      })),
   }));
 }
 
@@ -197,7 +218,7 @@ export async function listCohorts(): Promise<CohortWithMembers[]> {
   const allPairs = rows
     .map((r) => (Array.isArray(r.pairs) ? r.pairs[0] : r.pairs))
     .filter((p): p is PairRow => !!p);
-  const emails = await emailsFor(
+  const people = await peopleFor(
     allPairs.flatMap((p) => [p.user_a, p.user_b].filter(Boolean) as string[]),
   );
 
@@ -208,7 +229,7 @@ export async function listCohorts(): Promise<CohortWithMembers[]> {
       .filter((p): p is PairRow => !!p);
     return {
       ...cohort,
-      members: pairsForCohort.flatMap((p) => pairMembers(p, emails)),
+      members: pairsForCohort.flatMap((p) => pairMembers(p, people)),
     };
   });
 }

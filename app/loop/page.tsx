@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { ChevronDown, ChevronRight, Lock } from "lucide-react";
 import { supabase } from "@/utils/supabase";
 import {
@@ -125,6 +126,7 @@ interface Block {
 
 interface AbsgData {
   quarterTitle: string;
+  coverUrl: string;
   weekTitle: string;
   dayTitle: string;
   weekNumber: number;
@@ -294,28 +296,44 @@ function AbsgLoop({ pair, userId }: { pair: Pair; userId: string }) {
 
   const mine = dayReflections.find((r) => r.user_id === userId) ?? null;
   const partner = dayReflections.find((r) => r.user_id !== userId) ?? null;
-  const dateLabel = new Date(`${absg.date}T00:00:00Z`).toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  // The guide calls Saturday "Sabbath", so lead with its own day names
+  // rather than the locale's weekday.
+  const dayName = DAY_NAMES[absg.dayOfWeek - 1] ?? "Today";
+  const dateLabel = `${dayName} · ${new Date(`${absg.date}T00:00:00Z`).toLocaleDateString(
+    undefined,
+    { month: "long", day: "numeric", timeZone: "UTC" },
+  )}`;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50">
       <div className="mx-auto max-w-xl px-6 pb-24 pt-20">
         <ChurchNudge />
 
-        <header className="text-center">
-          <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700/80">
-            {dateLabel}
-          </p>
-          <h1 className="mt-3 font-serif text-3xl leading-tight text-stone-800">
-            {absg.dayTitle || absg.weekTitle}
-          </h1>
-          <p className="mt-3 text-xs text-stone-400">
-            {DAY_NAMES[absg.dayOfWeek - 1] ?? "Today"} · Week {absg.weekNumber}{" "}
-            · {absg.weekTitle} · {absg.quarterTitle}
-          </p>
+        <header className="relative overflow-hidden rounded-2xl bg-stone-900">
+          {absg.coverUrl && (
+            // The quarterly cover is a book mockup with a grey spine down its
+            // right edge, so overshoot the width and anchor left to clip it.
+            <Image
+              src={absg.coverUrl}
+              alt=""
+              width={854}
+              height={1280}
+              className="absolute inset-0 h-full w-[119%] max-w-none object-cover object-left opacity-70"
+              priority
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-950/40 to-stone-950/20" />
+          <div className="relative flex min-h-[220px] flex-col justify-end p-6">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/70">
+              {dateLabel}
+            </p>
+            <h1 className="mt-2 font-serif text-3xl leading-tight text-white">
+              {absg.dayTitle || absg.weekTitle}
+            </h1>
+            <p className="mt-2 text-xs text-white/60">
+              Week {absg.weekNumber} · {absg.weekTitle} · {absg.quarterTitle}
+            </p>
+          </div>
         </header>
 
         <section className="mt-14">

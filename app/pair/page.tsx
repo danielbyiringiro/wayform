@@ -12,7 +12,7 @@ import {
   choosePlan,
   type Pair,
 } from "@/utils/pairs";
-import { getProfileById } from "@/utils/cohort";
+import { getProfileById, firstName } from "@/utils/cohort";
 import { BIBLE_BOOKS } from "@/constants/bible";
 import type { PlanType } from "@/constants/plan";
 import { planLabel, planTotalDays } from "@/constants/plan";
@@ -24,7 +24,7 @@ export default function PairPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [userId, setUserId] = useState<string | null>(null);
   const [pair, setPair] = useState<Pair | null>(null);
-  const [partnerEmail, setPartnerEmail] = useState<string | null>(null);
+  const [partnerName, setPartnerName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingPlan, setChangingPlan] = useState(false);
 
@@ -35,10 +35,10 @@ export default function PairPage() {
       const partnerId = p.user_a === uid ? p.user_b : p.user_a;
       if (partnerId) {
         const profile = await getProfileById(partnerId);
-        setPartnerEmail(profile?.email ?? null);
+        setPartnerName(firstName(profile?.full_name, profile?.email));
       }
     } else {
-      setPartnerEmail(null);
+      setPartnerName(null);
     }
   };
 
@@ -143,7 +143,7 @@ export default function PairPage() {
           {pair && pair.status === "active" && pair.plan_type && !changingPlan && (
             <ActivePair
               pair={pair}
-              partnerEmail={partnerEmail}
+              partnerName={partnerName}
               onError={setError}
               onDissolved={refresh}
               onChangePlan={() => setChangingPlan(true)}
@@ -481,14 +481,14 @@ function ChoosePlan({
 
 function ActivePair({
   pair,
-  partnerEmail,
+  partnerName,
   onError,
   onDissolved,
   onChangePlan,
   onGoToLoop,
 }: {
   pair: Pair;
-  partnerEmail: string | null;
+  partnerName: string | null;
   onError: (e: string | null) => void;
   onDissolved: () => void;
   onChangePlan: () => void;
@@ -516,7 +516,7 @@ function ActivePair({
   return (
     <Card>
       <p className="font-serif text-lg text-stone-800">
-        Paired with {partnerEmail ?? "your partner"}
+        Paired with {partnerName ?? "your partner"}
       </p>
       <p className="mt-2 text-sm text-stone-500">
         {pair.plan_type && planLabel(pair.plan_type)}

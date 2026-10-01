@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "@/utils/supabase";
-import { getMyProfile } from "@/utils/cohort";
+import { getMyProfile, firstName } from "@/utils/cohort";
 import { Button } from "@/components/ui/button";
 
 export default function Navbar({ session }: { session: Session | null }) {
@@ -68,7 +68,10 @@ export default function Navbar({ session }: { session: Session | null }) {
                 </Link>
               )}
               <span className="hidden text-sm text-muted-foreground sm:inline">
-                {session.user.email}
+                {firstName(
+                  session.user.user_metadata?.full_name,
+                  session.user.email,
+                )}
               </span>
               <Button size="sm" variant="outline" onClick={handleSignOut}>
                 Sign Out

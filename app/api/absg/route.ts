@@ -195,6 +195,7 @@ export async function GET(request: NextRequest) {
 
   return Response.json({
     quarterTitle: quarter.info.title,
+    coverUrl: `${RAW_BASE}/${quarter.slug}/cover.png`,
     weekTitle: weekTitle ?? dayTitle ?? "",
     dayTitle: dayTitle ?? weekTitle ?? "",
     weekNumber,

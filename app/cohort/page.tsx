@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Users, Video, CalendarClock } from "lucide-react";
 import { supabase } from "@/utils/supabase";
-import { getMyCohort, formatSchedule, type CohortWithMembers } from "@/utils/cohort";
+import {
+  getMyCohort,
+  formatSchedule,
+  firstName,
+  type CohortWithMembers,
+} from "@/utils/cohort";
 
 type Status = "loading" | "ready" | "error";
 
@@ -12,7 +17,7 @@ export default function CohortPage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("loading");
   const [cohort, setCohort] = useState<CohortWithMembers | null>(null);
-  const [myEmail, setMyEmail] = useState<string | null>(null);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -24,7 +29,7 @@ export default function CohortPage() {
         router.replace("/signin");
         return;
       }
-      setMyEmail(session.user.email ?? null);
+      setMyUserId(session.user.id);
       try {
         const c = await getMyCohort();
         if (!active) return;
@@ -126,8 +131,8 @@ export default function CohortPage() {
                     key={m.user_id}
                     className="flex items-center justify-between rounded-lg border border-stone-200/70 bg-white/50 px-4 py-2.5 text-sm text-stone-700"
                   >
-                    <span>{m.email ?? "Member"}</span>
-                    {m.email === myEmail && (
+                    <span>{firstName(m.full_name, m.email)}</span>
+                    {m.user_id === myUserId && (
                       <span className="text-xs text-stone-400">You</span>
                     )}
                   </li>
