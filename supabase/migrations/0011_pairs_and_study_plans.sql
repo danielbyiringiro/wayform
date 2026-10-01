@@ -129,6 +129,18 @@ create trigger pairs_enforce_transition
   for each row execute function wayform.enforce_pair_transition();
 
 -- ---------------------------------------------------------------------------
+-- Cohorts now hold pairs (2-3 pairs = 4-6 people), not individual users.
+-- Created here (bare table only) because wayform.my_cohort_id() below, a
+-- SQL-language function, is validated against real tables at creation time.
+-- ---------------------------------------------------------------------------
+create table wayform.cohort_pairs (
+  id         uuid primary key default gen_random_uuid(),
+  cohort_id  uuid not null references wayform.cohorts (id) on delete cascade,
+  pair_id    uuid not null unique references wayform.pairs (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Helper functions (SECURITY DEFINER avoids recursive RLS evaluation).
 -- ---------------------------------------------------------------------------
 create or replace function wayform.my_pair_id()
@@ -274,15 +286,8 @@ create policy "pair reflections delete own" on wayform.pair_reflections
   for delete using (user_id = auth.uid());
 
 -- ---------------------------------------------------------------------------
--- Cohorts now hold pairs (2-3 pairs = 4-6 people), not individual users.
+-- cohort_pairs: size trigger and RLS (table itself created earlier, above).
 -- ---------------------------------------------------------------------------
-create table wayform.cohort_pairs (
-  id         uuid primary key default gen_random_uuid(),
-  cohort_id  uuid not null references wayform.cohorts (id) on delete cascade,
-  pair_id    uuid not null unique references wayform.pairs (id) on delete cascade,
-  created_at timestamptz not null default now()
-);
-
 create or replace function wayform.enforce_cohort_pair_size()
 returns trigger
 language plpgsql

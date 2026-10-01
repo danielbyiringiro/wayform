@@ -1,8 +1,11 @@
 // Wayform — resolves a pair's chosen Study Plan into a single day's content.
-// The three plan types (see app.txt) share one shape (PlanDay) so the loop
-// page doesn't need to branch on plan type.
+//
+// ABSG is calendar-driven (everyone studying it sees the same real-world
+// week, fetched live from /api/absg) and open-ended, so it's handled
+// separately by the loop page rather than through getPlanDay/planTotalDays
+// below, which only cover the two pair-paced plans (Chapter a Day, Custom
+// Passage Range).
 
-import { absgSections, getAbsgSection, ABSG_LESSON_TITLE } from "./absg";
 import { chaptersInBook } from "./bible";
 
 export type PlanType = "absg" | "chapter_a_day" | "custom_range";
@@ -23,12 +26,7 @@ export interface PlanDay {
   dayIndex: number;
   title: string;
   reference: string;
-  /** Embedded fallback text, if any (only ABSG ships one). */
-  fallbackText: string | null;
   translation: string;
-  audioUrl: string | null;
-  identityReframe: string | null;
-  identityReframeRequired: boolean;
   microPractice: string;
 }
 
@@ -44,11 +42,9 @@ function genericMicroPractice(dayIndex: number): string {
   return GENERIC_MICRO_PRACTICES[(dayIndex - 1) % GENERIC_MICRO_PRACTICES.length];
 }
 
-/** Total days in the plan, or 0 if the plan/config isn't resolvable yet. */
+/** Total days in the plan, or 0 if the plan/config isn't resolvable (or is ABSG). */
 export function planTotalDays(planType: PlanType, config: PlanConfig): number {
   switch (planType) {
-    case "absg":
-      return absgSections.length;
     case "chapter_a_day":
       return config.book ? chaptersInBook(config.book) : 0;
     case "custom_range": {
@@ -71,29 +67,14 @@ export function planLabel(planType: PlanType): string {
   }
 }
 
+/** Resolves Chapter-a-Day / Custom Range only; ABSG is fetched from /api/absg. */
 export function getPlanDay(
-  planType: PlanType,
+  planType: "chapter_a_day" | "custom_range",
   config: PlanConfig,
   dayIndex: number,
 ): PlanDay | null {
   const total = planTotalDays(planType, config);
   if (total === 0 || dayIndex < 1 || dayIndex > total) return null;
-
-  if (planType === "absg") {
-    const section = getAbsgSection(dayIndex);
-    if (!section) return null;
-    return {
-      dayIndex,
-      title: `${ABSG_LESSON_TITLE} · ${section.label}`,
-      reference: section.reference,
-      fallbackText: section.text,
-      translation: section.translation,
-      audioUrl: section.audioUrl,
-      identityReframe: section.identityReframe,
-      identityReframeRequired: true,
-      microPractice: section.microPractice,
-    };
-  }
 
   const book = config.book!;
   const chapter =
@@ -103,11 +84,7 @@ export function getPlanDay(
     dayIndex,
     title: `${book} ${chapter}`,
     reference: `${book} ${chapter}`,
-    fallbackText: null,
     translation: "ESV, fetched live",
-    audioUrl: null,
-    identityReframe: null,
-    identityReframeRequired: false,
     microPractice: genericMicroPractice(dayIndex),
   };
 }

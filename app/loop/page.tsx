@@ -26,13 +26,6 @@ export default function DailyLoopPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [pair, setPair] = useState<Pair | null>(null);
-  const [viewDay, setViewDay] = useState(1); // day currently being viewed
-  const [advancing, setAdvancing] = useState(false);
-  const [esvText, setEsvText] = useState<string | null>(null);
-  const [esvFailed, setEsvFailed] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [dayReflections, setDayReflections] = useState<Reflection[]>([]);
-  const [reflectionLoading, setReflectionLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +49,6 @@ export default function DailyLoopPage() {
         }
         setUserId(session.user.id);
         setPair(p);
-        setViewDay(p.current_index);
         setStatus("ready");
       } catch {
         if (!active) return;
@@ -81,15 +73,254 @@ export default function DailyLoopPage() {
     };
   }, [router]);
 
-  const planType = pair?.plan_type ?? null;
-  const planConfig = pair?.plan_config ?? {};
-  const totalDays = planType ? planTotalDays(planType, planConfig) : 0;
-  const planDay = planType ? getPlanDay(planType, planConfig, viewDay) : null;
+  if (status === "loading") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-stone-50">
+        <p className="font-serif text-stone-500">Preparing today’s loop…</p>
+      </main>
+    );
+  }
 
-  // Fetch live ESV text for the day being viewed. ABSG ships an embedded
-  // fallback; Chapter-a-Day / Custom Range have no embedded text at all.
+  if (status === "error") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
+        <p className="max-w-md text-center leading-relaxed text-stone-600">
+          {errorMsg}
+        </p>
+      </main>
+    );
+  }
+
+  if (!pair || !userId || !pair.plan_type) return null;
+
+  return pair.plan_type === "absg" ? (
+    <AbsgLoop pair={pair} userId={userId} />
+  ) : (
+    <PacedLoop pair={pair} userId={userId} planType={pair.plan_type} />
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-green-700">
+        {children}
+      </span>
+      <span className="h-px flex-1 bg-stone-200" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ABSG: calendar-driven, open-ended. Everyone following it on the same
+// calendar day sees the same real-world lesson section — there's no pair-paced
+// "Day N of M" progression or advance button, since tomorrow's date is what
+// unlocks tomorrow's section.
+// ---------------------------------------------------------------------------
+
+interface AbsgData {
+  quarterTitle: string;
+  weekTitle: string;
+  dayTitle: string;
+  weekNumber: number;
+  dayOfWeek: number;
+  date: string; // YYYY-MM-DD
+  paragraphs: string[];
+}
+
+function dateToDayIndex(isoDate: string): number {
+  return Math.floor(new Date(`${isoDate}T00:00:00Z`).getTime() / 86_400_000);
+}
+
+const DAY_NAMES = ["Sabbath", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+function AbsgLoop({ pair, userId }: { pair: Pair; userId: string }) {
+  const [absg, setAbsg] = useState<AbsgData | null>(null);
+  const [absgError, setAbsgError] = useState<string | null>(null);
+  const [dayReflections, setDayReflections] = useState<Reflection[]>([]);
+  const [reflectionLoading, setReflectionLoading] = useState(true);
+
   useEffect(() => {
-    if (status !== "ready" || !planDay) return;
+    let active = true;
+    fetch("/api/absg")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        if (data?.error) setAbsgError(data.error as string);
+        else setAbsg(data as AbsgData);
+      })
+      .catch(() => {
+        if (active) setAbsgError("Could not load this week's ABSG section.");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const dayIndex = absg ? dateToDayIndex(absg.date) : null;
+
+  useEffect(() => {
+    if (dayIndex === null) return;
+    let active = true;
+    getPairReflections(pair.id, dayIndex)
+      .then((rows) => {
+        if (active) setDayReflections(rows);
+      })
+      .catch(() => {
+        /* treat as no reflections yet */
+      })
+      .finally(() => {
+        if (active) setReflectionLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [dayIndex, pair.id]);
+
+  if (absgError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
+        <p className="max-w-md text-center text-sm leading-relaxed text-stone-600">
+          {absgError}
+        </p>
+      </main>
+    );
+  }
+
+  if (!absg || dayIndex === null) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-stone-50">
+        <p className="font-serif text-stone-500">Loading this week’s ABSG section…</p>
+      </main>
+    );
+  }
+
+  const mine = dayReflections.find((r) => r.user_id === userId) ?? null;
+  const partner = dayReflections.find((r) => r.user_id !== userId) ?? null;
+  const dateLabel = new Date(`${absg.date}T00:00:00Z`).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50">
+      <div className="mx-auto max-w-xl px-6 pb-24 pt-20">
+        <ChurchNudge />
+
+        <header className="text-center">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700/80">
+            {planLabel("absg")}
+          </p>
+          <h1 className="mt-3 font-serif text-3xl text-stone-800">
+            {DAY_NAMES[absg.dayOfWeek - 1] ?? "Today"}
+          </h1>
+          <p className="mt-2 text-xs text-stone-400">
+            {dateLabel} · Week {absg.weekNumber} · {absg.quarterTitle}
+          </p>
+        </header>
+
+        <section className="mt-14">
+          <SectionLabel>{absg.dayTitle || absg.weekTitle}</SectionLabel>
+          <div className="mt-4 space-y-4">
+            {absg.paragraphs.map((p, i) => (
+              <p key={i} className="font-serif text-lg leading-loose text-stone-800">
+                {p}
+              </p>
+            ))}
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-stone-400">
+            Sabbath School Adult Bible Study Guide, fetched live for today from
+            the official lesson content.
+          </p>
+        </section>
+
+        <section className="mt-14">
+          <SectionLabel>Today’s Practice</SectionLabel>
+          <p className="mt-4 text-lg leading-relaxed text-stone-700">
+            Together, talk through one thing from today’s section that stood
+            out to each of you, and pray about it.
+          </p>
+        </section>
+
+        <section className="mt-14 space-y-6">
+          <SectionLabel>Reflection</SectionLabel>
+          {reflectionLoading ? (
+            <p className="mt-4 text-sm text-stone-400">Loading reflections…</p>
+          ) : (
+            <>
+              {mine && <ReflectionSummary reflection={mine} label="You" />}
+              {partner && (
+                <ReflectionSummary reflection={partner} label="Your partner" />
+              )}
+              {!mine && (
+                <div>
+                  <p className="mb-5 text-sm text-stone-500">
+                    Take two quiet minutes. There are no wrong answers.
+                  </p>
+                  <ReflectionForm
+                    userId={userId}
+                    pairId={pair.id}
+                    dayIndex={dayIndex}
+                    onSubmitted={(r) =>
+                      setDayReflections((prev) => [
+                        ...prev.filter((x) => x.user_id !== r.user_id),
+                        r,
+                      ])
+                    }
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        {mine && partner && (
+          <p className="mt-16 text-center font-serif text-lg text-green-700">
+            You’ve both reflected on today’s study. Come back tomorrow for the
+            next section.
+          </p>
+        )}
+        {mine && !partner && (
+          <p className="mt-16 text-center text-sm text-stone-500">
+            Your reflection is saved — waiting on your partner’s.
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chapter a Day / Custom Passage Range: pair-paced, one day unlocked at a
+// time, both partners must reflect before advancing.
+// ---------------------------------------------------------------------------
+
+function PacedLoop({
+  pair: initialPair,
+  userId,
+  planType,
+}: {
+  pair: Pair;
+  userId: string;
+  planType: "chapter_a_day" | "custom_range";
+}) {
+  const [pair, setPair] = useState(initialPair);
+  const [viewDay, setViewDay] = useState(initialPair.current_index);
+  const [advancing, setAdvancing] = useState(false);
+  const [esvText, setEsvText] = useState<string | null>(null);
+  const [esvFailed, setEsvFailed] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [dayReflections, setDayReflections] = useState<Reflection[]>([]);
+  const [reflectionLoading, setReflectionLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const planConfig = pair.plan_config ?? {};
+  const totalDays = planTotalDays(planType, planConfig);
+  const planDay = getPlanDay(planType, planConfig, viewDay);
+
+  useEffect(() => {
+    if (!planDay) return;
 
     let active = true;
     setEsvText(null);
@@ -109,13 +340,11 @@ export default function DailyLoopPage() {
       active = false;
     };
     // planDay is a fresh object every render; re-run only when the actual
-    // reference (or readiness) changes, not on every render.
+    // reference changes, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planDay?.reference, status]);
+  }, [planDay?.reference]);
 
-  // Load both partners' reflections for the day being viewed.
   useEffect(() => {
-    if (status !== "ready" || !pair) return;
     let active = true;
     setDayReflections([]);
     setReflectionLoading(true);
@@ -132,10 +361,9 @@ export default function DailyLoopPage() {
     return () => {
       active = false;
     };
-  }, [viewDay, status, pair]);
+  }, [viewDay, pair.id]);
 
   const handleAdvance = async () => {
-    if (!pair) return;
     setAdvancing(true);
     try {
       const updated = await advancePairDay(pair.id, pair.current_index, totalDays);
@@ -148,25 +376,7 @@ export default function DailyLoopPage() {
     }
   };
 
-  if (status === "loading") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-stone-50">
-        <p className="font-serif text-stone-500">Preparing today’s loop…</p>
-      </main>
-    );
-  }
-
-  if (status === "error") {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
-        <p className="max-w-md text-center leading-relaxed text-stone-600">
-          {errorMsg}
-        </p>
-      </main>
-    );
-  }
-
-  if (!pair || !planType || !planDay) return null;
+  if (!planDay) return null;
 
   const mine = dayReflections.find((r) => r.user_id === userId) ?? null;
   const partner = dayReflections.find((r) => r.user_id !== userId) ?? null;
@@ -189,7 +399,12 @@ export default function DailyLoopPage() {
       <div className="mx-auto max-w-xl px-6 pb-24 pt-20">
         <ChurchNudge />
 
-        {/* Quiet header */}
+        {errorMsg && (
+          <p className="mb-6 rounded-lg bg-red-50 px-4 py-2.5 text-center text-sm text-red-700">
+            {errorMsg}
+          </p>
+        )}
+
         <header className="text-center">
           <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700/80">
             {planLabel(planType)}
@@ -210,15 +425,14 @@ export default function DailyLoopPage() {
           </div>
         </header>
 
-        {/* Scripture Anchor */}
         <section className="mt-14">
           <SectionLabel>Scripture</SectionLabel>
           <p className="mt-4 text-sm font-medium text-stone-500">
             {planDay.reference}
           </p>
-          {esvText || planDay.fallbackText ? (
+          {esvText ? (
             <blockquote className="mt-4 font-serif text-lg leading-loose text-stone-800">
-              {esvText ?? planDay.fallbackText}
+              {esvText}
             </blockquote>
           ) : esvFailed ? (
             <p className="mt-4 text-sm leading-relaxed text-stone-500">
@@ -229,41 +443,15 @@ export default function DailyLoopPage() {
           ) : (
             <p className="mt-4 text-sm text-stone-400">Loading passage…</p>
           )}
-
-          {planDay.audioUrl && (
-            <div className="mt-6">
-              <p className="mb-2 text-xs uppercase tracking-wider text-stone-400">
-                Listen
-              </p>
-              <audio
-                controls
-                preload="none"
-                src={planDay.audioUrl}
-                className="w-full"
-              >
-                Your browser does not support audio playback.
-              </audio>
-            </div>
+          {esvText && (
+            <p className="mt-4 text-xs leading-relaxed text-stone-400">
+              Scripture text is from the ESV® Bible (The Holy Bible, English
+              Standard Version®), © 2001 by Crossway. Used by permission. All
+              rights reserved.
+            </p>
           )}
-
-          <p className="mt-4 text-xs leading-relaxed text-stone-400">
-            {esvText
-              ? "Scripture text and audio are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway. Used by permission. All rights reserved."
-              : `Text: ${planDay.translation}.`}
-          </p>
         </section>
 
-        {/* Identity Reframe — only on plans that carry one (ABSG) */}
-        {planDay.identityReframe && (
-          <section className="mt-14">
-            <SectionLabel>Identity Reframe</SectionLabel>
-            <p className="mt-6 text-center font-serif text-2xl italic leading-relaxed text-stone-800">
-              {planDay.identityReframe}
-            </p>
-          </section>
-        )}
-
-        {/* Micro-Practice */}
         <section className="mt-14">
           <SectionLabel>Today’s Practice</SectionLabel>
           <p className="mt-2 text-xs uppercase tracking-wider text-stone-400">
@@ -274,7 +462,6 @@ export default function DailyLoopPage() {
           </p>
         </section>
 
-        {/* Reflection — each partner submits their own */}
         <section className="mt-14 space-y-6">
           <SectionLabel>Reflection</SectionLabel>
           {reflectionLoading ? (
@@ -287,7 +474,7 @@ export default function DailyLoopPage() {
               {partner && (
                 <ReflectionSummary reflection={partner} label="Your partner" />
               )}
-              {!mine && isOnCurrent && userId && (
+              {!mine && isOnCurrent && (
                 <div>
                   <p className="mb-5 text-sm text-stone-500">
                     Take two quiet minutes. There are no wrong answers.
@@ -314,7 +501,6 @@ export default function DailyLoopPage() {
           )}
         </section>
 
-        {/* Footer actions */}
         <div className="mt-16 flex flex-col items-center gap-5">
           {isOnCurrent ? (
             canAdvance ? (
@@ -359,7 +545,6 @@ export default function DailyLoopPage() {
             </Button>
           )}
 
-          {/* Quiet review of earlier days */}
           <button
             onClick={() => setReviewOpen((v) => !v)}
             className="text-xs text-stone-400 underline-offset-4 hover:text-stone-600 hover:underline"
@@ -395,16 +580,5 @@ export default function DailyLoopPage() {
         </div>
       </div>
     </main>
-  );
-}
-
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-green-700">
-        {children}
-      </span>
-      <span className="h-px flex-1 bg-stone-200" />
-    </div>
   );
 }

@@ -26,6 +26,7 @@ export default function PairPage() {
   const [pair, setPair] = useState<Pair | null>(null);
   const [partnerEmail, setPartnerEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [changingPlan, setChangingPlan] = useState(false);
 
   const load = async (uid: string) => {
     const p = await getMyPair(uid);
@@ -128,20 +129,24 @@ export default function PairPage() {
             />
           )}
 
-          {pair && pair.status === "active" && !pair.plan_type && (
+          {pair && pair.status === "active" && (!pair.plan_type || changingPlan) && (
             <ChoosePlan
               pair={pair}
               onError={setError}
-              onChosen={refresh}
+              onChosen={() => {
+                setChangingPlan(false);
+                refresh();
+              }}
             />
           )}
 
-          {pair && pair.status === "active" && pair.plan_type && (
+          {pair && pair.status === "active" && pair.plan_type && !changingPlan && (
             <ActivePair
               pair={pair}
               partnerEmail={partnerEmail}
               onError={setError}
               onDissolved={refresh}
+              onChangePlan={() => setChangingPlan(true)}
               onGoToLoop={() => router.push("/loop")}
             />
           )}
@@ -327,10 +332,10 @@ function ChoosePlan({
   onError: (e: string | null) => void;
   onChosen: () => void;
 }) {
-  const [type, setType] = useState<PlanType>("absg");
-  const [book, setBook] = useState(BIBLE_BOOKS[0].name);
-  const [startChapter, setStartChapter] = useState(1);
-  const [endChapter, setEndChapter] = useState(1);
+  const [type, setType] = useState<PlanType>(pair.plan_type ?? "absg");
+  const [book, setBook] = useState(pair.plan_config.book ?? BIBLE_BOOKS[0].name);
+  const [startChapter, setStartChapter] = useState(pair.plan_config.startChapter ?? 1);
+  const [endChapter, setEndChapter] = useState(pair.plan_config.endChapter ?? 1);
   const [busy, setBusy] = useState(false);
 
   const bookChapters =
@@ -363,9 +368,13 @@ function ChoosePlan({
 
   return (
     <Card>
-      <p className="font-serif text-lg text-stone-800">Choose your study</p>
+      <p className="font-serif text-lg text-stone-800">
+        {pair.plan_type ? "Change your study" : "Choose your study"}
+      </p>
       <p className="mt-2 text-sm text-stone-500">
-        You&rsquo;re paired up. Now pick how you&rsquo;ll study scripture together.
+        {pair.plan_type
+          ? "Switching restarts at day 1 of the new plan."
+          : "You’re paired up. Now pick how you’ll study scripture together."}
       </p>
 
       <div className="mt-5 space-y-3">
@@ -475,12 +484,14 @@ function ActivePair({
   partnerEmail,
   onError,
   onDissolved,
+  onChangePlan,
   onGoToLoop,
 }: {
   pair: Pair;
   partnerEmail: string | null;
   onError: (e: string | null) => void;
   onDissolved: () => void;
+  onChangePlan: () => void;
   onGoToLoop: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -517,6 +528,12 @@ function ActivePair({
           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
         >
           Go to today&rsquo;s loop
+        </button>
+        <button
+          onClick={onChangePlan}
+          className="text-sm text-stone-500 underline-offset-4 hover:text-stone-700 hover:underline"
+        >
+          Change plan
         </button>
         <button
           disabled={busy}
