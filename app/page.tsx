@@ -1,7 +1,31 @@
 import { Button } from "@/components/ui/button";
 import RedirectIfAuthed from "@/components/RedirectIfAuthed";
+import ContactForm from "@/components/ContactForm";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+
+const INSTAGRAM_URL = "https://www.instagram.com/wayformapp/";
+
+// lucide-react v1 dropped brand icons, so this one is inlined (same approach
+// the sign-in page takes for its Google and GitHub marks).
+function InstagramIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="20" height="20" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M17.5 6.5h.01" />
+    </svg>
+  );
+}
 
 const STEPS = [
   {
@@ -129,10 +153,34 @@ export default function Home() {
             </p>
           </section>
 
-          <p className="mt-16 text-center text-sm leading-relaxed text-stone-400">
-            WayForm doesn&rsquo;t replace your local church. It walks alongside
-            it.
-          </p>
+          {/* Contact */}
+          <section className="mt-16">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-green-700">
+              Get in touch
+            </h2>
+            <p className="mb-6 mt-4 leading-relaxed text-stone-600">
+              Questions, feedback, or want to bring WayForm to your church or
+              group? Send a note.
+            </p>
+            <ContactForm />
+          </section>
+
+          {/* Footer */}
+          <footer className="mt-16 flex flex-col items-center gap-5">
+            <a
+              href={INSTAGRAM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-stone-500 underline-offset-4 transition hover:text-green-700 hover:underline"
+            >
+              <InstagramIcon />
+              @wayformapp
+            </a>
+            <p className="text-center text-sm leading-relaxed text-stone-400">
+              WayForm doesn&rsquo;t replace your local church. It walks
+              alongside it.
+            </p>
+          </footer>
         </div>
       </main>
     </>
