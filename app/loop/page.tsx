@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import ReflectionForm from "@/components/ReflectionForm";
 import ReflectionSummary from "@/components/ReflectionSummary";
 import ChurchNudge from "@/components/ChurchNudge";
+import ScriptureText, { PassageText } from "@/components/ScriptureText";
 
 type Status = "loading" | "ready" | "error";
 
@@ -137,45 +138,25 @@ interface AbsgData {
   additional: Block[];
 }
 
-/**
- * The ESV API marks verses inline as "[3]". Render those as small raised
- * numbers so the passage still reads as prose.
- */
-function PassageText({ text }: { text: string }) {
-  const parts = text.split(/\[(\d+)\]/g);
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <sup
-            key={i}
-            className="mr-0.5 align-super text-[0.65em] font-medium text-green-700/70"
-          >
-            {part}
-          </sup>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
-}
-
 /** One lesson block, styled by kind the way the printed guide sets them. */
 function LessonBlock({ block }: { block: Block }) {
   switch (block.kind) {
     case "question":
       return (
         <div className="rounded-2xl border border-green-700/20 bg-green-50/50 p-5">
-          <p className="font-medium leading-relaxed text-stone-800">
-            {block.text}
-          </p>
+          <ScriptureText
+            text={block.text}
+            className="font-medium leading-relaxed text-stone-800"
+          />
         </div>
       );
     case "quote":
       return (
-        <blockquote className="border-l-2 border-green-700/30 pl-5 font-serif text-lg italic leading-loose text-stone-700">
-          {block.text}
+        <blockquote className="border-l-2 border-green-700/30 pl-5">
+          <ScriptureText
+            text={block.text}
+            className="whitespace-pre-line font-serif text-lg italic leading-loose text-stone-700"
+          />
         </blockquote>
       );
     case "heading":
@@ -184,9 +165,10 @@ function LessonBlock({ block }: { block: Block }) {
       );
     default:
       return (
-        <p className="whitespace-pre-line font-serif text-lg leading-loose text-stone-800">
-          {block.text}
-        </p>
+        <ScriptureText
+          text={block.text}
+          className="whitespace-pre-line font-serif text-lg leading-loose text-stone-800"
+        />
       );
   }
 }
