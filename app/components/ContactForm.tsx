@@ -45,7 +45,7 @@ export default function ContactForm() {
   if (state === "sent") {
     return (
       <p className="rounded-2xl border border-green-700/20 bg-green-50/60 p-6 text-center leading-relaxed text-stone-700">
-        Thanks — your message is on its way. You&rsquo;ll get a reply at the
+        Thanks, your message is on its way. You&rsquo;ll get a reply at the
         address you gave.
       </p>
     );

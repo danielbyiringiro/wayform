@@ -7,9 +7,9 @@ import { NextRequest } from "next/server";
 // CONTACT_FROM_EMAIL must be a sender verified with Sankofa; CONTACT_TO_EMAIL
 // is where the messages land.
 
-const SANKOFA_ENDPOINT = "https://api.itemeshop.com/v1/emails";
+const SANKOFA_ENDPOINT = "https://api.trysankofa.com/v1/emails";
 const TO = process.env.CONTACT_TO_EMAIL ?? "daniel.byiringiro.cs@gmail.com";
-const FROM = process.env.CONTACT_FROM_EMAIL ?? "hello@itemeshop.com";
+const FROM = process.env.CONTACT_FROM_EMAIL ?? "wayform@trysankofa.com";
 
 const LIMITS = { name: 100, email: 200, message: 4000 };
 
@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         from: FROM,
         to: TO,
+        replyTo: email,
         subject: `Wayform contact from ${name}`,
         html,
       }),
