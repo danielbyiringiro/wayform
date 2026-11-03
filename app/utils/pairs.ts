@@ -58,34 +58,37 @@ export async function createInvite(userId: string): Promise<Pair> {
 }
 
 /** Redeem someone else's invite code, forming an active pair. */
-export async function acceptInvite(code: string, userId: string): Promise<Pair> {
-  const normalized = code.trim().toUpperCase();
+/** What someone holding an invite code can see before they have an account. */
+export interface InvitePreview {
+  id: string;
+  plan_type: PlanType | null;
+  plan_config: PlanConfig;
+  current_index: number;
+  inviter_name: string | null;
+}
 
-  const { data: found, error: findError } = await supabase
-    .from("pairs")
-    .select("id, user_a")
-    .eq("invite_code", normalized)
-    .eq("status", "pending")
-    .is("user_b", null)
-    .maybeSingle();
-
-  if (findError) throw findError;
-  if (!found) {
-    throw new Error("That invite code wasn't found, or has already been used.");
-  }
-  if (found.user_a === userId) {
-    throw new Error("You can't accept your own invite.");
-  }
-
-  const { data, error } = await supabase
-    .from("pairs")
-    .update({ user_b: userId })
-    .eq("id", found.id)
-    .select()
-    .single();
-
+/**
+ * Look up an invite without being signed in. Goes through a database function
+ * because pending pairs aren't readable directly — holding the code is what
+ * grants access to this one row.
+ */
+export async function previewInvite(
+  code: string,
+): Promise<InvitePreview | null> {
+  const { data, error } = await supabase.rpc("pair_by_invite", {
+    p_code: code.trim(),
+  });
   if (error) throw error;
-  return data as Pair;
+  const row = (data as InvitePreview[] | null)?.[0];
+  return row ?? null;
+}
+
+/** Redeem an invite code, joining the inviter's study where they left off. */
+export async function acceptInvite(code: string): Promise<void> {
+  const { error } = await supabase.rpc("accept_invite", {
+    p_code: code.trim(),
+  });
+  if (error) throw new Error(error.message);
 }
 
 /** Leave/end the pair. Kept as history, not deleted. */

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { supabase } from "@/utils/supabase";
 import {
   getMyPair,
@@ -17,7 +17,11 @@ import { Button } from "@/components/ui/button";
 import ReflectionForm from "@/components/ReflectionForm";
 import ReflectionSummary from "@/components/ReflectionSummary";
 import ChurchNudge from "@/components/ChurchNudge";
-import ScriptureText, { PassageText } from "@/components/ScriptureText";
+import { PassageText } from "@/components/ScriptureText";
+import LessonBlock, {
+  AdditionalReading,
+  type AbsgData,
+} from "@/components/LessonBlock";
 
 type Status = "loading" | "ready" | "error";
 
@@ -45,7 +49,7 @@ export default function DailyLoopPage() {
       try {
         const p = await getMyPair(session.user.id);
         if (!active) return;
-        if (!p || p.status !== "active" || !p.plan_type) {
+        if (!p || !p.plan_type) {
           router.replace("/pair");
           return;
         }
@@ -119,95 +123,6 @@ function SectionLabel({ children }: { children: string }) {
 // "Day N of M" progression or advance button, since tomorrow's date is what
 // unlocks tomorrow's section.
 // ---------------------------------------------------------------------------
-
-interface Block {
-  kind: "text" | "question" | "heading" | "quote";
-  text: string;
-}
-
-interface AbsgData {
-  quarterTitle: string;
-  coverUrl: string;
-  weekTitle: string;
-  dayTitle: string;
-  weekNumber: number;
-  dayOfWeek: number;
-  date: string; // YYYY-MM-DD
-  blocks: Block[];
-  additionalTitle: string | null;
-  additional: Block[];
-}
-
-/** One lesson block, styled by kind the way the printed guide sets them. */
-function LessonBlock({ block }: { block: Block }) {
-  switch (block.kind) {
-    case "question":
-      return (
-        <div className="rounded-2xl border border-green-700/20 bg-green-50/50 p-5">
-          <ScriptureText
-            text={block.text}
-            className="font-medium leading-relaxed text-stone-800"
-          />
-        </div>
-      );
-    case "quote":
-      return (
-        <blockquote className="border-l-2 border-green-700/30 pl-5">
-          <ScriptureText
-            text={block.text}
-            className="whitespace-pre-line font-serif text-lg italic leading-loose text-stone-700"
-          />
-        </blockquote>
-      );
-    case "heading":
-      return (
-        <p className="font-serif text-xl text-stone-800">{block.text}</p>
-      );
-    default:
-      return (
-        <ScriptureText
-          text={block.text}
-          className="whitespace-pre-line font-serif text-lg leading-loose text-stone-800"
-        />
-      );
-  }
-}
-
-/** Supplementary material, tucked behind a disclosure like the printed guide. */
-function AdditionalReading({
-  title,
-  blocks,
-}: {
-  title: string;
-  blocks: Block[];
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="mt-8 rounded-2xl border border-stone-200/70 bg-white/50">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
-      >
-        <span className="text-sm font-medium text-stone-700">{title}</span>
-        <ChevronDown
-          className={[
-            "h-4 w-4 shrink-0 text-stone-400 transition-transform",
-            open ? "rotate-180" : "",
-          ].join(" ")}
-        />
-      </button>
-      {open && (
-        <div className="space-y-5 border-t border-stone-200/70 px-5 pb-6 pt-5">
-          {blocks.map((block, i) => (
-            <LessonBlock key={i} block={block} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function dateToDayIndex(isoDate: string): number {
   return Math.floor(new Date(`${isoDate}T00:00:00Z`).getTime() / 86_400_000);
@@ -387,7 +302,9 @@ function AbsgLoop({ pair, userId }: { pair: Pair; userId: string }) {
         )}
         {mine && !partner && (
           <p className="mt-16 text-center text-sm text-stone-500">
-            Your reflection is saved — waiting on your partner’s.
+            {pair.user_b
+              ? "Your reflection is saved — waiting on your partner’s."
+              : "Reflection saved. Come back tomorrow for the next section."}
           </p>
         )}
       </div>
@@ -488,15 +405,17 @@ function PacedLoop({
   const isOnCurrent = viewDay === pair.current_index;
   const hasNextDay = pair.current_index < totalDays;
   const nextDayUnlocked = isNextDayUnlocked(pair.current_index_started_at);
-  const bothReflected = !!mine && !!partner;
+  // Nobody to wait for until a partner joins.
+  const solo = !pair.user_b;
+  const dayComplete = solo ? !!mine : !!mine && !!partner;
   const needsReflection = isOnCurrent && !reflectionLoading && !mine;
-  const awaitingPartner = isOnCurrent && !!mine && !partner;
+  const awaitingPartner = isOnCurrent && !solo && !!mine && !partner;
   const canAdvance =
-    isOnCurrent && hasNextDay && nextDayUnlocked && bothReflected;
+    isOnCurrent && hasNextDay && nextDayUnlocked && dayComplete;
   const awaitingNextDay =
-    isOnCurrent && hasNextDay && !nextDayUnlocked && bothReflected;
+    isOnCurrent && hasNextDay && !nextDayUnlocked && dayComplete;
   const finishedPlan =
-    pair.current_index >= totalDays && isOnCurrent && bothReflected;
+    pair.current_index >= totalDays && isOnCurrent && dayComplete;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-amber-50/50 via-stone-50 to-stone-50">
@@ -624,7 +543,9 @@ function PacedLoop({
               <div className="flex flex-col items-center gap-1 text-center">
                 <Lock className="h-4 w-4 text-stone-400" />
                 <p className="text-sm text-stone-600">
-                  You’ve both completed today’s loop.
+                  {solo
+                    ? "You’ve completed today’s study."
+                    : "You’ve both completed today’s loop."}
                 </p>
                 <p className="text-xs text-stone-400">
                   Day {pair.current_index + 1} opens tomorrow — rest in this one.

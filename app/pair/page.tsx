@@ -121,15 +121,7 @@ export default function PairPage() {
             />
           )}
 
-          {pair && pair.status === "pending" && (
-            <PendingPair
-              pair={pair}
-              onError={setError}
-              onDissolved={refresh}
-            />
-          )}
-
-          {pair && pair.status === "active" && (!pair.plan_type || changingPlan) && (
+          {pair && (!pair.plan_type || changingPlan) && (
             <ChoosePlan
               pair={pair}
               onError={setError}
@@ -140,8 +132,8 @@ export default function PairPage() {
             />
           )}
 
-          {pair && pair.status === "active" && pair.plan_type && !changingPlan && (
-            <ActivePair
+          {pair && pair.plan_type && !changingPlan && (
+            <PairHome
               pair={pair}
               partnerName={partnerName}
               onError={setError}
@@ -197,7 +189,7 @@ function NoPair({
     }
     setBusy(true);
     try {
-      await acceptInvite(code, userId);
+      await acceptInvite(code);
       onChanged();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not accept that invite.");
@@ -250,76 +242,6 @@ function NoPair({
         </div>
       </Card>
     </div>
-  );
-}
-
-function PendingPair({
-  pair,
-  onError,
-  onDissolved,
-}: {
-  pair: Pair;
-  onError: (e: string | null) => void;
-  onDissolved: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(pair.invite_code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable — the code is still shown on screen */
-    }
-  };
-
-  const cancel = async () => {
-    onError(null);
-    setBusy(true);
-    try {
-      await dissolvePair(pair.id);
-      onDissolved();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Could not cancel the invite.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card>
-      <p className="font-serif text-lg text-stone-800">
-        Waiting for your partner
-      </p>
-      <p className="mt-2 text-sm text-stone-500">
-        Share this code with the person you&rsquo;re studying with. Once they enter
-        it, your pair becomes active.
-      </p>
-      <div className="mt-5 flex items-center justify-center gap-3">
-        <span className="rounded-lg bg-stone-100 px-4 py-2.5 font-mono text-lg tracking-[0.2em] text-stone-800">
-          {pair.invite_code}
-        </span>
-        <button
-          onClick={copy}
-          className="rounded-lg border border-stone-300 p-2.5 text-stone-600 hover:bg-stone-50"
-          aria-label="Copy invite code"
-        >
-          <Copy className="h-4 w-4" />
-        </button>
-      </div>
-      {copied && (
-        <p className="mt-2 text-center text-xs text-green-700">Copied.</p>
-      )}
-      <button
-        disabled={busy}
-        onClick={cancel}
-        className="mt-6 text-sm text-stone-400 underline-offset-4 hover:text-stone-600 hover:underline"
-      >
-        Cancel this invite
-      </button>
-    </Card>
   );
 }
 
@@ -479,7 +401,7 @@ function ChoosePlan({
   );
 }
 
-function ActivePair({
+function PairHome({
   pair,
   partnerName,
   onError,
@@ -495,55 +417,117 @@ function ActivePair({
   onGoToLoop: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const total = pair.plan_type ? planTotalDays(pair.plan_type, pair.plan_config) : 0;
+  const [copied, setCopied] = useState<"link" | "code" | null>(null);
+
+  const solo = !pair.user_b;
+  const total = pair.plan_type
+    ? planTotalDays(pair.plan_type, pair.plan_config)
+    : 0;
+
+  const copy = async (what: "link" | "code") => {
+    const value =
+      what === "code"
+        ? pair.invite_code
+        : `${window.location.origin}/join/${pair.invite_code}`;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1600);
+    } catch {
+      /* clipboard unavailable — the code is still on screen to read out */
+    }
+  };
 
   const leave = async () => {
     onError(null);
-    if (!confirm("End this pair? Your partner will need a new invite to pair again.")) {
-      return;
-    }
+    const message = solo
+      ? "Cancel this study? Your invite code will stop working."
+      : "End this pair? Your partner will need a new invite to pair again.";
+    if (!confirm(message)) return;
     setBusy(true);
     try {
       await dissolvePair(pair.id);
       onDissolved();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Could not end the pair.");
+      onError(e instanceof Error ? e.message : "Could not end this.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Card>
-      <p className="font-serif text-lg text-stone-800">
-        Paired with {partnerName ?? "your partner"}
-      </p>
-      <p className="mt-2 text-sm text-stone-500">
-        {pair.plan_type && planLabel(pair.plan_type)}
-        {total > 0 && ` · Day ${pair.current_index} of ${total}`}
-      </p>
-      <div className="mt-5 flex flex-wrap items-center gap-4">
-        <button
-          onClick={onGoToLoop}
-          className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-        >
-          Go to today&rsquo;s loop
-        </button>
-        <button
-          onClick={onChangePlan}
-          className="text-sm text-stone-500 underline-offset-4 hover:text-stone-700 hover:underline"
-        >
-          Change plan
-        </button>
-        <button
-          disabled={busy}
-          onClick={leave}
-          className="inline-flex items-center gap-1.5 text-sm text-stone-400 underline-offset-4 hover:text-red-600 hover:underline"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          End this pair
-        </button>
-      </div>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <p className="font-serif text-lg text-stone-800">
+          {solo
+            ? "Studying on your own"
+            : `Paired with ${partnerName ?? "your partner"}`}
+        </p>
+        <p className="mt-2 text-sm text-stone-500">
+          {pair.plan_type && planLabel(pair.plan_type)}
+          {total > 0 && ` \u00b7 Day ${pair.current_index} of ${total}`}
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          <button
+            onClick={onGoToLoop}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+          >
+            Go to today&rsquo;s study
+          </button>
+          <button
+            onClick={onChangePlan}
+            className="text-sm text-stone-500 underline-offset-4 hover:text-stone-700 hover:underline"
+          >
+            Change plan
+          </button>
+          <button
+            disabled={busy}
+            onClick={leave}
+            className="inline-flex items-center gap-1.5 text-sm text-stone-400 underline-offset-4 hover:text-red-600 hover:underline"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            {solo ? "Cancel this study" : "End this pair"}
+          </button>
+        </div>
+      </Card>
+
+      {solo && (
+        <Card>
+          <p className="font-serif text-lg text-stone-800">
+            Invite your partner
+          </p>
+          <p className="mt-2 text-sm text-stone-500">
+            Keep going on your own in the meantime. Whenever they join,
+            they&rsquo;ll pick up at the day you&rsquo;ve reached, and the link
+            shows them today&rsquo;s study before they sign up.
+          </p>
+          <div className="mt-5 flex items-center justify-center gap-3">
+            <span className="rounded-lg bg-stone-100 px-4 py-2.5 font-mono text-lg tracking-[0.2em] text-stone-800">
+              {pair.invite_code}
+            </span>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => copy("link")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Copy invite link
+            </button>
+            <button
+              onClick={() => copy("code")}
+              className="text-sm text-stone-500 underline-offset-4 hover:text-stone-700 hover:underline"
+            >
+              Copy code only
+            </button>
+            {copied && (
+              <span className="text-xs text-green-700">
+                {copied === "link" ? "Link copied." : "Code copied."}
+              </span>
+            )}
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }

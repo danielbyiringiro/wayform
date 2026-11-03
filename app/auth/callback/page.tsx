@@ -18,7 +18,15 @@ export default function AuthCallback() {
     const finish = () => {
       if (settled) return;
       settled = true;
-      router.replace("/loop");
+      // Someone who signed in from an invite should land back on it, not
+      // on a loop they aren't part of yet.
+      let pendingInvite: string | null = null;
+      try {
+        pendingInvite = localStorage.getItem("wayform:pendingInvite");
+      } catch {
+        /* private mode — fall through to the loop */
+      }
+      router.replace(pendingInvite ? `/join/${pendingInvite}` : "/loop");
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
