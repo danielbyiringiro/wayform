@@ -12,6 +12,12 @@ export interface Pair {
   plan_started_at: string | null;
   current_index: number;
   current_index_started_at: string;
+  /** Local time of the pair's session, in session_timezone. */
+  session_time: string | null;
+  /** IANA zone the slot was set in — 6pm Friday there may be Saturday here. */
+  session_timezone: string | null;
+  /** 0 = Sunday … 6 = Saturday, in session_timezone. */
+  session_days: number[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -143,4 +149,57 @@ export async function advancePairDay(
 
   if (error) throw error;
   return data as Pair;
+}
+
+// --- Session schedule -------------------------------------------------------
+
+export interface SessionSlot {
+  time: string; // "18:00"
+  timezone: string; // IANA name
+  days: number[]; // 0 = Sunday … 6 = Saturday
+}
+
+/** Set (or change) when the pair meets. */
+export async function updateSchedule(
+  pairId: string,
+  slot: SessionSlot,
+): Promise<Pair> {
+  const { data, error } = await supabase
+    .from("pairs")
+    .update({
+      session_time: slot.time,
+      session_timezone: slot.timezone,
+      session_days: slot.days,
+    })
+    .eq("id", pairId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Pair;
+}
+
+/** Drop the schedule entirely; the pair goes back to studying ad hoc. */
+export async function clearSchedule(pairId: string): Promise<Pair> {
+  const { data, error } = await supabase
+    .from("pairs")
+    .update({ session_time: null, session_timezone: null, session_days: null })
+    .eq("id", pairId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Pair;
+}
+
+/**
+ * When the next session falls. Worked out by the database so the reminder
+ * job and the screen can never disagree about it.
+ */
+export async function nextSessionAt(pairId: string): Promise<Date | null> {
+  const { data, error } = await supabase.rpc("pair_next_session", {
+    p_pair_id: pairId,
+  });
+  if (error) throw new Error(error.message);
+  return data ? new Date(data as string) : null;
 }

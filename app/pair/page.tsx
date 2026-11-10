@@ -13,6 +13,7 @@ import {
   type Pair,
 } from "@/utils/pairs";
 import { getProfileById, firstName } from "@/utils/cohort";
+import ScheduleCard from "@/components/ScheduleCard";
 import { BIBLE_BOOKS } from "@/constants/bible";
 import type { PlanType } from "@/constants/plan";
 import { planLabel, planTotalDays } from "@/constants/plan";
@@ -136,6 +137,7 @@ export default function PairPage() {
             <PairHome
               pair={pair}
               partnerName={partnerName}
+              onPairUpdated={setPair}
               onError={setError}
               onDissolved={refresh}
               onChangePlan={() => setChangingPlan(true)}
@@ -405,6 +407,7 @@ function PairHome({
   pair,
   partnerName,
   onError,
+  onPairUpdated,
   onDissolved,
   onChangePlan,
   onGoToLoop,
@@ -412,6 +415,7 @@ function PairHome({
   pair: Pair;
   partnerName: string | null;
   onError: (e: string | null) => void;
+  onPairUpdated: (pair: Pair) => void;
   onDissolved: () => void;
   onChangePlan: () => void;
   onGoToLoop: () => void;
@@ -490,6 +494,8 @@ function PairHome({
           </button>
         </div>
       </Card>
+
+      <ScheduleCard pair={pair} onChanged={onPairUpdated} />
 
       {solo && (
         <Card>
