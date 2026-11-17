@@ -142,6 +142,7 @@ export default function PairPage() {
               onDissolved={refresh}
               onChangePlan={() => setChangingPlan(true)}
               onGoToLoop={() => router.push("/loop")}
+              onStartSession={() => router.push("/session")}
             />
           )}
         </div>
@@ -411,6 +412,7 @@ function PairHome({
   onDissolved,
   onChangePlan,
   onGoToLoop,
+  onStartSession,
 }: {
   pair: Pair;
   partnerName: string | null;
@@ -419,6 +421,7 @@ function PairHome({
   onDissolved: () => void;
   onChangePlan: () => void;
   onGoToLoop: () => void;
+  onStartSession: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<"link" | "code" | null>(null);
@@ -473,10 +476,16 @@ function PairHome({
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <button
-            onClick={onGoToLoop}
+            onClick={onStartSession}
             className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
           >
-            Go to today&rsquo;s study
+            Start session
+          </button>
+          <button
+            onClick={onGoToLoop}
+            className="text-sm text-stone-500 underline-offset-4 hover:text-stone-700 hover:underline"
+          >
+            Study on my own
           </button>
           <button
             onClick={onChangePlan}

@@ -88,3 +88,11 @@ export function getPlanDay(
     microPractice: genericMicroPractice(dayIndex),
   };
 }
+
+/**
+ * ABSG is calendar-driven, so its "day" is the date itself. Days since the
+ * epoch gives both partners the same index for the same calendar day.
+ */
+export function absgDayIndex(isoDate: string): number {
+  return Math.floor(new Date(`${isoDate}T00:00:00Z`).getTime() / 86_400_000);
+}

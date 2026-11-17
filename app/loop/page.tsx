@@ -12,7 +12,12 @@ import {
   type Pair,
 } from "@/utils/pairs";
 import { getPairReflections, type Reflection } from "@/utils/reflection";
-import { getPlanDay, planTotalDays, planLabel } from "@/constants/plan";
+import {
+  getPlanDay,
+  planTotalDays,
+  planLabel,
+  absgDayIndex,
+} from "@/constants/plan";
 import { Button } from "@/components/ui/button";
 import ReflectionForm from "@/components/ReflectionForm";
 import ReflectionSummary from "@/components/ReflectionSummary";
@@ -124,9 +129,6 @@ function SectionLabel({ children }: { children: string }) {
 // unlocks tomorrow's section.
 // ---------------------------------------------------------------------------
 
-function dateToDayIndex(isoDate: string): number {
-  return Math.floor(new Date(`${isoDate}T00:00:00Z`).getTime() / 86_400_000);
-}
 
 const DAY_NAMES = ["Sabbath", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -153,7 +155,7 @@ function AbsgLoop({ pair, userId }: { pair: Pair; userId: string }) {
     };
   }, []);
 
-  const dayIndex = absg ? dateToDayIndex(absg.date) : null;
+  const dayIndex = absg ? absgDayIndex(absg.date) : null;
 
   useEffect(() => {
     if (dayIndex === null) return;

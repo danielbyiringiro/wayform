@@ -9,6 +9,8 @@ export interface Profile {
   is_admin: boolean;
   church_status?: ChurchStatus | null;
   church_name?: string | null;
+  /** How this person's partner can reach them when it's time to call. */
+  contact_link?: string | null;
 }
 
 /**
@@ -79,7 +81,7 @@ export interface PairSummary {
 export async function getMyProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, is_admin, church_status, church_name")
+    .select("id, email, full_name, is_admin, church_status, church_name, contact_link")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
@@ -90,7 +92,7 @@ export async function getMyProfile(userId: string): Promise<Profile | null> {
 export async function getProfileById(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, is_admin, church_status, church_name")
+    .select("id, email, full_name, is_admin, church_status, church_name, contact_link")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -292,4 +294,30 @@ export async function removePair(pairId: string): Promise<void> {
     .delete()
     .eq("pair_id", pairId);
   if (error) throw error;
+}
+
+/**
+ * Where your partner should reach you when it's time to call. Stored as a
+ * link so people can point at whatever they actually use; a bare number or
+ * domain is normalised so the session screen never renders a dead href.
+ */
+export async function updateContactLink(
+  userId: string,
+  value: string | null,
+): Promise<string | null> {
+  const trimmed = value?.trim() ?? "";
+  let link: string | null = trimmed || null;
+
+  if (link && !/^(https?:|tel:|mailto:)/i.test(link)) {
+    link = /^[+\d][\d\s()-]+$/.test(link)
+      ? `tel:${link.replace(/[\s()-]/g, "")}`
+      : `https://${link}`;
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ contact_link: link })
+    .eq("id", userId);
+  if (error) throw new Error(error.message);
+  return link;
 }

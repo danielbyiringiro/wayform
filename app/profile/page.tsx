@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Church, Compass } from "lucide-react";
 import { supabase } from "@/utils/supabase";
-import { getMyProfile, updateChurch, type ChurchStatus } from "@/utils/cohort";
+import {
+  getMyProfile,
+  updateChurch,
+  updateContactLink,
+  type ChurchStatus,
+} from "@/utils/cohort";
 
 type Status = "loading" | "ready" | "error";
 
@@ -16,6 +21,7 @@ export default function ProfilePage() {
 
   const [choice, setChoice] = useState<ChurchStatus | null>(null);
   const [churchName, setChurchName] = useState("");
+  const [contactLink, setContactLink] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +43,7 @@ export default function ProfilePage() {
         if (!active) return;
         setChoice(profile?.church_status ?? null);
         setChurchName(profile?.church_name ?? "");
+        setContactLink(profile?.contact_link ?? "");
         setStatus("ready");
       } catch {
         if (active) setStatus("error");
@@ -60,6 +67,8 @@ export default function ProfilePage() {
     setSavedMsg(null);
     try {
       await updateChurch(userId, choice, churchName.trim() || null);
+      const saved = await updateContactLink(userId, contactLink);
+      setContactLink(saved ?? "");
       setSavedMsg("Saved.");
     } catch {
       setError("Could not save. Please try again.");
@@ -151,6 +160,23 @@ export default function ProfilePage() {
                 />
               </div>
             )}
+
+            <div className="mt-10 border-t border-stone-200/70 pt-8">
+              <p className="font-serif text-lg text-stone-800">
+                How your partner reaches you
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-stone-500">
+                Shown to your study partner when a session starts, so one of
+                you can call. A WhatsApp link, a phone number, or a meeting
+                room &mdash; whatever you actually use.
+              </p>
+              <input
+                value={contactLink}
+                onChange={(e) => setContactLink(e.target.value)}
+                placeholder="wa.me/233200000000"
+                className="mt-4 block w-full rounded-lg border border-stone-200 bg-white/70 px-3.5 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+              />
+            </div>
 
             <div className="mt-6 flex items-center gap-4">
               <button
