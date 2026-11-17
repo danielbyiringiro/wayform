@@ -321,3 +321,21 @@ export async function updateContactLink(
   if (error) throw new Error(error.message);
   return link;
 }
+
+/**
+ * Remember where this person is, so session reminders can show their own
+ * local time rather than their partner's. Best effort — a failure here
+ * should never block whatever the user was actually doing.
+ */
+export async function rememberMyTimezone(): Promise<void> {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!zone) return;
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user.id;
+    if (!userId) return;
+    await supabase.from("profiles").update({ timezone: zone }).eq("id", userId);
+  } catch {
+    /* ignore */
+  }
+}

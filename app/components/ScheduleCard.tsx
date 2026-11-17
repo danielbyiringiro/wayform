@@ -8,6 +8,7 @@ import {
   nextSessionAt,
   type Pair,
 } from "@/utils/pairs";
+import { rememberMyTimezone } from "@/utils/cohort";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -92,6 +93,8 @@ export default function ScheduleCard({
     setBusy(true);
     try {
       const updated = await updateSchedule(pair.id, { time, timezone: zone, days });
+      // So the reminder email can address them in their own local time.
+      await rememberMyTimezone();
       onChanged(updated);
       setEditing(false);
     } catch (e) {
